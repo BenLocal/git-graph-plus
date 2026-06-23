@@ -105,6 +105,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Image Diff**          | Side-by-side visual preview with swipe comparison for image changes                      |
 | **Patch Export**        | Save any commit as a `.patch` file                                                       |
 | **Open in Editor**      | Right-click any file in the diff viewer to open it or view its changes in VS Code        |
+| **Reverse Changes**     | Undo a whole file, a single hunk, or gutter-selected lines of a commit against your working tree — and copy selected lines — right from the diff |
 
 ### Stash & Worktree
 
