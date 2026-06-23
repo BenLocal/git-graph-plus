@@ -1136,6 +1136,14 @@ export class MainPanel {
           await this.refreshAll();
           break;
         }
+        case 'reverseCommitChanges': {
+          const { commit, file, hunkIndex, lineIndices } = message.payload;
+          await this.gitService.reverseCommitChanges(commit, file, { hunkIndex, lineIndices });
+          this.post({ type: 'operationComplete', payload: { operation: 'reverseCommitChanges', success: true } });
+          vscode.window.showInformationMessage(vscode.l10n.t('reversedFileChange', path.basename(file)));
+          await this.refreshAll();
+          break;
+        }
         case 'compareToWorking': {
           const [workingDiffs, workingFiles] = await Promise.all([
             this.gitService.diffCommitToWorking(message.payload.hash),
