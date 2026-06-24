@@ -97,6 +97,53 @@ interface BodyLine {
 const NO_NEWLINE_MARKER = '\\ No newline at end of file';
 
 /**
+ * A whole-file add/delete diff carries a `new file mode`/`deleted file mode`
+ * line and a `/dev/null` side. That header reverses cleanly only while one side
+ * stays empty (reverse a pure add → delete the file; reverse a pure delete →
+ * recreate it). A PARTIAL reverse leaves content on the formerly-empty side, so
+ * the operation is really an in-place modification — and git then rejects the
+ * `/dev/null` header ("new file ... depends on old contents"). Rewrite those
+ * header lines into a normal modification header whenever a side is no longer
+ * empty:
+ *  - old side now non-empty but header says newly added (`--- /dev/null`) →
+ *    restore the real old path (mirrored from the `+++ b/...` side) and fold the
+ *    `new file mode` into the index line.
+ *  - new side now non-empty but header says deleted (`+++ /dev/null`) →
+ *    restore the real new path (mirrored from the `--- a/...` side) and fold the
+ *    `deleted file mode` into the index line.
+ * A whole-file reverse keeps its empty side, so this is a no-op for it (and for
+ * ordinary modification diffs, which have no `/dev/null` side at all).
+ */
+function normalizeWholeFileHeader(header: string[], oldCount: number, newCount: number): string[] {
+  const rewriteOld = oldCount > 0 && header.includes('--- /dev/null');
+  const rewriteNew = newCount > 0 && header.includes('+++ /dev/null');
+  if (!rewriteOld && !rewriteNew) { return header; }
+
+  let mode = '';
+  const out: string[] = [];
+  for (const line of header) {
+    const modeMatch = line.match(/^(?:new|deleted) file mode (\d+)$/);
+    if (modeMatch) { mode = modeMatch[1]; continue; }
+    if (rewriteOld && line === '--- /dev/null') {
+      const plus = header.find((l) => l.startsWith('+++ b/'));
+      out.push(plus ? '--- a/' + plus.slice('+++ b/'.length) : line);
+    } else if (rewriteNew && line === '+++ /dev/null') {
+      const minus = header.find((l) => l.startsWith('--- a/'));
+      out.push(minus ? '+++ b/' + minus.slice('--- a/'.length) : line);
+    } else {
+      out.push(line);
+    }
+  }
+  // The mode lived on the now-dropped `new/deleted file mode` line; a normal
+  // diff carries it on the index line, so re-attach it there if it's missing.
+  if (mode) {
+    const i = out.findIndex((l) => l.startsWith('index '));
+    if (i !== -1 && !/ \d+$/.test(out[i])) { out[i] = out[i] + ' ' + mode; }
+  }
+  return out;
+}
+
+/**
  * Build a patch containing a single hunk from `rawFileDiff`, optionally narrowed
  * to a subset of that hunk's changed lines. The result is meant to be applied
  * with `git apply --reverse` to undo those changes in the working tree.
@@ -263,5 +310,6 @@ export function buildReversePatch(rawFileDiff: string, hunkIndex: number, lineIn
   }
 
   const headerLine = rewriteHunkHeader(hunk.headerLine, oldCount, newCount);
-  return [...header, headerLine, ...body].join('\n') + '\n';
+  const finalHeader = normalizeWholeFileHeader(header, oldCount, newCount);
+  return [...finalHeader, headerLine, ...body].join('\n') + '\n';
 }

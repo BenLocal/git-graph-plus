@@ -1025,7 +1025,6 @@
               onReverse={canReverseInThisView ? handleDiffReverse : undefined}
               onReverseHunk={canReverseInThisView ? handleHunkReverse : undefined}
               onReverseLines={canReverseInThisView ? handleLinesReverse : undefined}
-              fileStatus={files.find(f => f.path === sec.file)?.status}
             />
           {/each}
         </div>
@@ -1036,7 +1035,6 @@
           onReverse={canReverseInThisView ? handleDiffReverse : undefined}
           onReverseHunk={canReverseInThisView ? handleHunkReverse : undefined}
           onReverseLines={canReverseInThisView ? handleLinesReverse : undefined}
-          fileStatus={files.find(f => f.path === selectedDiff.file)?.status}
         />
       {/if}
     </div>

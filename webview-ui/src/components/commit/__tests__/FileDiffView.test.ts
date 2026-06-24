@@ -76,7 +76,7 @@ describe('FileDiffView reverse context menu', () => {
   it('reports the hunk for a changed line', () => {
     const onReverse = vi.fn();
     const onReverseHunk = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse, onReverseHunk });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse, onReverseHunk });
 
     const lines = container.querySelectorAll('.diff-content .diff-line');
     expect(lines.length).toBe(7);
@@ -93,7 +93,7 @@ describe('FileDiffView reverse context menu', () => {
 
   it('reports the same hunk regardless of which changed line is clicked', () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const lines = container.querySelectorAll('.diff-content .diff-line');
 
     rightClick(lines[5]); // second add of the second block, still hunk 0
@@ -102,7 +102,7 @@ describe('FileDiffView reverse context menu', () => {
 
   it('offers Reverse Hunk on a context line', () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const lines = container.querySelectorAll('.diff-content .diff-line');
 
     const ev = rightClick(lines[0]); // context line → still reverses the whole hunk
@@ -113,22 +113,27 @@ describe('FileDiffView reverse context menu', () => {
     expect(arg.selectedLineIndices).toBeUndefined();
   });
 
-  it('does not fire and hides the hunk reverse button for a wholly-added file', () => {
+  it('reverses a wholly-added/deleted file like any other (whole-file hunk/line reverse)', () => {
+    // Added/deleted files have no special gating: reversing every line of the
+    // hunk undoes the add/delete, and a partial selection reverses just those
+    // lines (the backend rewrites the whole-file header). So the affordances
+    // behave exactly as for a modified file.
     const onReverse = vi.fn();
     const onReverseHunk = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'A', onReverse, onReverseHunk });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse, onReverseHunk });
     const lines = container.querySelectorAll('.diff-content .diff-line');
 
     const ev = rightClick(lines[2]);
-    expect(onReverse).not.toHaveBeenCalled();
-    expect(ev.defaultPrevented).toBe(false);
-    // canReverse is false → no per-hunk reverse button.
-    expect(container.querySelector('.hunk-hunk-btn')).toBeNull();
+    expect(onReverse).toHaveBeenCalledTimes(1);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(onReverse.mock.calls[0][0]).toMatchObject({ hunkIndex: 0 });
+    // canReverse is true → the per-hunk reverse button renders.
+    expect(container.querySelector('.hunk-hunk-btn')).not.toBeNull();
   });
 
   it('does nothing without a commit hash (compare/uncommitted view)', () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), onReverse });
     const lines = container.querySelectorAll('.diff-content .diff-line');
 
     rightClick(lines[2]);
@@ -138,7 +143,7 @@ describe('FileDiffView reverse context menu', () => {
   it('forwards the current text selection', () => {
     vi.spyOn(window, 'getSelection').mockReturnValue({ toString: () => 'picked text' } as unknown as Selection);
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const lines = container.querySelectorAll('.diff-content .diff-line');
 
     rightClick(lines[2]);
@@ -148,7 +153,7 @@ describe('FileDiffView reverse context menu', () => {
   it('renders a per-hunk reverse button that reverses the hunk on click', async () => {
     const onReverse = vi.fn();
     const onReverseHunk = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse, onReverseHunk });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse, onReverseHunk });
 
     const btn = container.querySelector('.hunk-hunk-btn');
     expect(btn).not.toBeNull();
@@ -161,7 +166,7 @@ describe('FileDiffView reverse context menu', () => {
   it('disables reverse on a truncated hunk (avoids reversing unseen lines)', () => {
     const onReverse = vi.fn();
     const onReverseHunk = vi.fn();
-    const { container } = render(FileDiffView, { diff: hugeDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse, onReverseHunk });
+    const { container } = render(FileDiffView, { diff: hugeDiff(), commitHash: 'deadbeef', onReverse, onReverseHunk });
 
     // The hunk is rendered partially, so no reverse button and right-click is a no-op.
     expect(container.querySelector('.hunk-hunk-btn')).toBeNull();
@@ -180,7 +185,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('drag-selects two changed lines and reverses just those', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     // Drag from the first add (4) to the second add (5).
@@ -195,7 +200,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('excludes context lines from a range that spans them', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     // Select indices 2..4 — index 3 is a context line and must be dropped.
@@ -210,7 +215,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('shift-click extends the selection', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[1]);
@@ -225,7 +230,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('Escape clears the selection (context right-click then reverses the whole hunk)', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[4]);
@@ -243,7 +248,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('keeps an active selection when right-clicking the gutter (right-click does not reset it)', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     // Drag-select the two adds (4, 5).
@@ -262,7 +267,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('does not offer Reverse Selected Lines when right-clicking outside the selected region', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     // Drag-select the two adds (4, 5).
@@ -279,7 +284,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('left-clicking an already-selected gutter line deselects', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[4]);
@@ -298,7 +303,7 @@ describe('FileDiffView gutter line-selection', () => {
   });
 
   it('left-clicking the code region deselects', async () => {
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse: vi.fn() });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse: vi.fn() });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[4]);
@@ -313,7 +318,7 @@ describe('FileDiffView gutter line-selection', () => {
   });
 
   it('hunk header shows the Hunk N: Lines A-B label', () => {
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse: vi.fn() });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse: vi.fn() });
     const range = container.querySelector('.diff-hunk-range')!;
     expect(range.textContent).toContain('Hunk 1');
     expect(range.textContent).toContain('Lines 1-5');
@@ -322,7 +327,7 @@ describe('FileDiffView gutter line-selection', () => {
   it('renders a Reverse Lines button that reverses the selection on click', async () => {
     const onReverse = vi.fn();
     const onReverseLines = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse, onReverseLines });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse, onReverseLines });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[4]);
@@ -337,7 +342,7 @@ describe('FileDiffView gutter line-selection', () => {
   });
 
   it('applies the line-selected class to selected lines', async () => {
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse: vi.fn() });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse: vi.fn() });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[4]);
@@ -352,7 +357,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('clears the selection when switching to side-by-side (no stale invisible selection)', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[4]);
@@ -372,7 +377,7 @@ describe('FileDiffView gutter line-selection', () => {
 
   it('offers Reverse Hunk for a right-click anywhere in an SBS hunk (including empty rows)', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
 
     const sbsBtn = container.querySelectorAll('.diff-mode-toggle button')[1];
     await fireEvent.click(sbsBtn);
@@ -452,7 +457,7 @@ describe('FileDiffView copy lines (gutter)', () => {
 
   it('sets copyLinesText to the joined content of the selection on a gutter right-click', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     // Select the two adds (4 = 'd1', 5 = 'd2').
@@ -468,7 +473,7 @@ describe('FileDiffView copy lines (gutter)', () => {
 
   it('includes context lines in copyLinesText (copies everything selected)', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     // Select 2..4: 'b2' (add), 'c' (context), 'd1' (add) — context is kept here.
@@ -483,7 +488,7 @@ describe('FileDiffView copy lines (gutter)', () => {
 
   it('does NOT offer copy lines when right-clicking the code region', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     await fireEvent.mouseDown(g[4]);
@@ -499,7 +504,7 @@ describe('FileDiffView copy lines (gutter)', () => {
 
   it('does NOT offer copy lines on a gutter right-click when nothing is selected', () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: sampleDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     rightClick(g[2]);
@@ -508,7 +513,7 @@ describe('FileDiffView copy lines (gutter)', () => {
 
   it('still offers copy lines for a single blank selected line (empty string, not undefined)', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: blankLineDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: blankLineDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
 
     // Select only the blank added line (index 0).
@@ -524,7 +529,7 @@ describe('FileDiffView copy lines (gutter)', () => {
 
   it('does NOT offer copy lines when right-clicking a different hunk than the selection', async () => {
     const onReverse = vi.fn();
-    const { container } = render(FileDiffView, { diff: twoHunkDiff(), commitHash: 'deadbeef', fileStatus: 'M', onReverse });
+    const { container } = render(FileDiffView, { diff: twoHunkDiff(), commitHash: 'deadbeef', onReverse });
     const g = gutters(container);
     expect(g.length).toBe(4); // hunk0: 0,1  hunk1: 2,3
 

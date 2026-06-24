@@ -111,6 +111,53 @@ describe('GitService integration — reverseCommitChanges', () => {
     expect(existsSync(join(repo.path, 'new.txt'))).toBe(false);
   });
 
+  it('reverses the whole hunk of a newly-created file, deleting it', async () => {
+    // Reversing every line of a wholly-added file's hunk is equivalent to
+    // reversing the file: the `new file mode` header reverse-applies to a delete.
+    const added = commit(repo.path, 'add multi', { 'created.txt': 'a\nb\nc\n' });
+    await svc.reverseCommitChanges(added, 'created.txt', { hunkIndex: 0 });
+    expect(existsSync(join(repo.path, 'created.txt'))).toBe(false);
+  });
+
+  it('reverses one added line of a newly-created file, keeping the rest', async () => {
+    const added = commit(repo.path, 'add multi', { 'created.txt': 'a\nb\nc\n' });
+    const hunk = (await svc.showCommitDiff(added, 'created.txt'))[0].hunks[0];
+    const idxB = hunk.lines.findIndex((l) => l.type === 'add' && l.content === 'b');
+    expect(idxB).toBeGreaterThanOrEqual(0);
+
+    await svc.reverseCommitChanges(added, 'created.txt', { hunkIndex: 0, lineIndices: [idxB] });
+
+    // The file survives with only the unselected lines — the whole-file-add
+    // header is rewritten to a modification so the partial reverse applies.
+    expect(existsSync(join(repo.path, 'created.txt'))).toBe(true);
+    expect(read(repo, 'created.txt')).toBe('a\nc\n');
+  });
+
+  it('reverses the whole hunk of a deleted file, restoring it', async () => {
+    commit(repo.path, 'seed', { 'gone.txt': 'p\nq\nr\n' });
+    runGit(repo.path, ['rm', 'gone.txt']);
+    const del = commit(repo.path, 'remove gone');
+    expect(existsSync(join(repo.path, 'gone.txt'))).toBe(false);
+
+    await svc.reverseCommitChanges(del, 'gone.txt', { hunkIndex: 0 });
+    expect(read(repo, 'gone.txt')).toBe('p\nq\nr\n');
+  });
+
+  it('reverses one deleted line of a deleted file, recreating it with just that line', async () => {
+    commit(repo.path, 'seed', { 'gone.txt': 'p\nq\nr\n' });
+    runGit(repo.path, ['rm', 'gone.txt']);
+    const del = commit(repo.path, 'remove gone');
+
+    const hunk = (await svc.showCommitDiff(del, 'gone.txt'))[0].hunks[0];
+    const idxQ = hunk.lines.findIndex((l) => l.type === 'delete' && l.content === 'q');
+    expect(idxQ).toBeGreaterThanOrEqual(0);
+
+    // Restoring only `q`'s deletion recreates the file holding just that line;
+    // the `deleted file mode` header still reverse-applies to a create.
+    await svc.reverseCommitChanges(del, 'gone.txt', { hunkIndex: 0, lineIndices: [idxQ] });
+    expect(read(repo, 'gone.txt')).toBe('q\n');
+  });
+
   it('throws when the file was not changed by the commit', async () => {
     await expect(svc.reverseCommitChanges(hash, 'does-not-exist.txt')).rejects.toThrow();
   });

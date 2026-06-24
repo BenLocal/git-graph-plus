@@ -197,6 +197,78 @@ index 4d6e807..12db783 100644
     );
   });
 
+  // A wholly-added file: `new file mode` + `--- /dev/null` header, all-add hunk.
+  const ADDED = `diff --git a/new.txt b/new.txt
+new file mode 100644
+index 0000000..83db48f
+--- /dev/null
++++ b/new.txt
+@@ -0,0 +1,3 @@
++line1
++line2
++line3
+`;
+
+  // A wholly-deleted file: `deleted file mode` + `+++ /dev/null` header, all-delete hunk.
+  const DELETED = `diff --git a/old.txt b/old.txt
+deleted file mode 100644
+index 83db48f..0000000
+--- a/old.txt
++++ /dev/null
+@@ -1,3 +0,0 @@
+-line1
+-line2
+-line3
+`;
+
+  it('keeps the whole-file-add header when reversing the entire hunk (reverse-applies to a delete)', () => {
+    // Every line stays an addition, so the new side is still the whole file and
+    // the old side empty — the `new file mode` + `/dev/null` header is correct.
+    const patch = buildReversePatch(ADDED, 0);
+    expect(patch).toBe(ADDED);
+  });
+
+  it('rewrites the whole-file-add header into a modification for a partial reverse', () => {
+    // Reverse only `line2`; `line1`/`line3` demote to context, so the old side is
+    // no longer empty and the `/dev/null` header would be rejected by git.
+    const hunk = parseDiff(ADDED)[0].hunks[0];
+    const idx = hunk.lines.findIndex((l) => l.type === 'add' && l.content === 'line2');
+    const patch = buildReversePatch(ADDED, 0, [idx]);
+    expect(patch).toBe(
+      [
+        'diff --git a/new.txt b/new.txt',
+        'index 0000000..83db48f 100644', // mode folded in from the dropped `new file mode`
+        '--- a/new.txt', //                 was `--- /dev/null`
+        '+++ b/new.txt',
+        '@@ -0,2 +1,3 @@',
+        ' line1', //  unselected add → context
+        '+line2', //  selected add → reversed away
+        ' line3',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps the whole-file-delete header for both whole and partial reverses', () => {
+    // Deletions never land on the new side, so it stays empty and the
+    // `deleted file mode` + `/dev/null` header keeps reverse-applying to a create.
+    const hunk = parseDiff(DELETED)[0].hunks[0];
+    const idx = hunk.lines.findIndex((l) => l.type === 'delete' && l.content === 'line2');
+    const patch = buildReversePatch(DELETED, 0, [idx]);
+    expect(patch).toBe(
+      [
+        'diff --git a/old.txt b/old.txt',
+        'deleted file mode 100644',
+        'index 83db48f..0000000',
+        '--- a/old.txt',
+        '+++ /dev/null',
+        '@@ -1,1 +0,0 @@',
+        '-line2', // restored on reverse-apply; the other deletions are dropped
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('throws for an out-of-range hunk index', () => {
     expect(() => buildReversePatch(SAMPLE, 5)).toThrow(/not found/);
   });

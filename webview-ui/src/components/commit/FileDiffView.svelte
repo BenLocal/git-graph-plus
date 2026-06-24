@@ -36,9 +36,6 @@
     stacked?: boolean;
     // Optional commit label shown in the toolbar (used by stacked per-commit sections).
     heading?: string;
-    // Git status letter for this file ('A'/'M'/'D'/'R'...). Whole add/delete
-    // files only offer "Reverse File" (from the tree), not hunk reverse.
-    fileStatus?: string;
     // When provided (committed view only), right-clicking a diff line offers to
     // reverse that whole hunk against the working tree.
     onReverse?: (target: ReverseTarget) => void;
@@ -50,11 +47,14 @@
     onReverseLines?: (target: { commitHash: string; file: string; hunkIndex: number; lineIndices: number[] }) => void;
   }
 
-  let { diff, commitHash, stacked = false, heading, fileStatus, onReverse, onReverseHunk, onReverseLines }: Props = $props();
+  let { diff, commitHash, stacked = false, heading, onReverse, onReverseHunk, onReverseLines }: Props = $props();
 
-  // Whether this diff supports reversing (committed view, modified file). Drives
-  // both the right-click menu and the per-hunk header reverse affordance.
-  const canReverse = $derived(!!onReverse && !!commitHash && fileStatus !== 'A' && fileStatus !== 'D');
+  // Whether this diff supports reversing (committed view). Drives both the
+  // right-click menu and the per-hunk header reverse affordance. Whole-file
+  // additions/deletions reverse too: reversing every line of an added file's
+  // hunk removes it, and of a deleted file's hunk restores it (the backend's
+  // patch-builder rewrites the whole-file header for partial selections).
+  const canReverse = $derived(!!onReverse && !!commitHash);
 
   // A truncated diff renders only the first N lines of its final hunk (see
   // renderHunks). Reversing then would silently undo the unseen tail too, so we
@@ -136,7 +136,6 @@
 
   function handleLineContextMenu(e: MouseEvent, hunkIndex: number, lineIndex = -1) {
     if (!onReverse || !commitHash) return;                 // not reversible → native menu
-    if (fileStatus === 'A' || fileStatus === 'D') return; // whole add/delete → use tree's Reverse File
     const changed = selectedChangedIndices;
     // Only offer "Reverse Selected Lines" when the right-click lands on a line
     // that is part of the active selection; otherwise fall back to whole-hunk.
@@ -650,8 +649,8 @@
   }
 
   /* Outline the whole hunk on hover so the reverse extent is obvious. Inline only
-     when reversible (non-committed/added/deleted diffs get no misleading hint);
-     SBS outlines the hovered hunk in both panes (.sbs-hunk.hunk-hover below). */
+     when reversible (compare/uncommitted diffs get no misleading hint); SBS
+     outlines the hovered hunk in both panes (.sbs-hunk.hunk-hover below). */
   .diff-hunk.reversible:hover,
   .sbs-hunk.hunk-hover {
     outline: 1px solid var(--vscode-focusBorder, rgba(120, 120, 255, 0.4));
