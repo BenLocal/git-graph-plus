@@ -22,10 +22,11 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 
 - **인터랙티브 커밋 그래프** - 색상 구분 브랜치 레일과 머지 라인으로 히스토리를 한눈에
 - **완전한 Git 워크플로우** - 브랜치, merge, rebase, cherry-pick, reset, stash, worktree, 태그, 리모트 작업
+- **드래그 Rebase & Merge** - 한 브랜치를 다른 브랜치 위로 드래그하여 rebase 또는 merge - 명령어 없이
 - **Interactive Rebase** - 드래그로 커밋 순서 변경, 커밋별 액션 제어 (pick, squash, fixup, drop 등)
+- **충돌 예측 & 해결** - merge/rebase 실행 전에 충돌 파일을 미리 확인하고, VS Code 3-way 병합 편집기로 해결
 - **내장 Diff 뷰어** - Shiki 기반 구문 강조, 이미지 diff (나란히 보기, 스와이프, 오니언 스킨)
-- **충돌 해결** - 충돌 자동 감지, 인라인 배너, VS Code 3-way 병합 편집기 연동
-- **고급 도구** - Git Flow, Bisect, LFS 파일 잠금, 서브모듈, 통계, Reflog
+- **고급 Git 도구** - Git Flow, Bisect, LFS 파일 잠금, 서브모듈, 통계, dangling 커밋 복구가 포함된 Reflog
 
 ---
 
@@ -61,6 +62,7 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | **Merge**                | Default, `--no-ff`, `--ff-only`, squash merge 전략                                      |
 | **Rebase**               | 일반 rebase 및 드래그로 순서 변경 가능한 interactive rebase UI                          |
 | **Interactive Rebase**   | 액션 드롭다운 (pick, reword, edit, squash, fixup, drop) 및 drop 경고가 포함된 시각적 UI |
+| **드래그 Rebase/Merge**  | 그래프에서 한 브랜치를 다른 브랜치 위로 드래그하여 대상 위로 rebase하거나 대상에 merge  |
 | **Squash Commits**       | 그래프에서 연속된 여러 커밋을 선택해 하나로 합치기                                      |
 | **Cherry-pick & Revert** | 특정 커밋 적용 또는 되돌리기 (한 개 또는 여러 개 동시 선택), `--no-commit` 옵션 포함     |
 | **Reset**                | soft, mixed, hard 모드로 임의의 커밋으로 reset                                          |
