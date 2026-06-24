@@ -816,6 +816,37 @@ export class MainPanel {
           await this.refreshAll();
           break;
         }
+        case 'dragRebase': {
+          // Drag A onto B = rebase A onto B, leaving A current. Check out the
+          // source directly (not via the checkout message) so no "Checked out"
+          // notification fires — only the rebase result is announced.
+          const dragCurrent = (await this.gitService.branches()).find(b => b.current)?.name;
+          if (dragCurrent !== message.payload.source) {
+            await this.gitService.checkout(message.payload.source);
+          }
+          await this.gitService.rebase(message.payload.target);
+          this.post({ type: 'operationComplete', payload: { operation: 'rebase', success: true } });
+          vscode.window.showInformationMessage(
+            vscode.l10n.t('rebasedBranchOnto', message.payload.source, message.payload.target),
+          );
+          await this.refreshAll();
+          break;
+        }
+        case 'dragMerge': {
+          // Drag A onto B = merge A into B (always --no-ff), leaving B current.
+          // Check out the target directly so no "Checked out" notification fires.
+          const mergeCurrent = (await this.gitService.branches()).find(b => b.current)?.name;
+          if (mergeCurrent !== message.payload.target) {
+            await this.gitService.checkout(message.payload.target);
+          }
+          await this.gitService.merge(message.payload.source, { noFf: true });
+          this.post({ type: 'operationComplete', payload: { operation: 'merge', success: true } });
+          vscode.window.showInformationMessage(
+            vscode.l10n.t('mergedBranchInto', message.payload.source, message.payload.target),
+          );
+          await this.refreshAll();
+          break;
+        }
         case 'abortRebase': {
           await this.gitService.abortRebase();
           this.post({

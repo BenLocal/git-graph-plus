@@ -217,6 +217,9 @@ export const en: Record<string, string> = {
   // Multi-select (squash / cherry-pick selected commits)
   'graph.squashCommits': 'Squash {count} commits',
   'graph.cherryPickCommits': 'Cherry-pick {count} commits',
+  'graph.dragRebaseOnto': "Rebase '{source}' onto '{target}'",
+  'graph.dragMergeInto': "Merge '{source}' into '{target}'",
+  'graph.dragDropUncommitted': 'Commit or stash your changes before dragging branches.',
   'cherryPickMultiple.title': 'Cherry-pick Commits',
   'cherryPickMultiple.desc': 'Apply these {count} commits onto {branch}.',
   'squash.title': 'Squash Commits',
