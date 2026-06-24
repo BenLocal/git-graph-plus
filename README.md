@@ -172,6 +172,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | Setting                                | Default       | Description                                              |
 | -------------------------------------- | ------------- | -------------------------------------------------------- |
 | `gitGraphPlus.autoRefresh`             | `true`        | Auto-refresh on repository changes                       |
+| `gitGraphPlus.timeout`                 | `60`          | Max time (seconds) to wait for a Git command before abort |
 | `gitGraphPlus.locale`                  | `auto`        | UI language (`auto`, `en`, `ko`, `zh-cn`)                |
 | `gitGraphPlus.graphSortOrder`          | `topological` | Commit sort order (`topological`, `date`, `author-date`) |
 | `gitGraphPlus.showSignatureStatus`     | `true`        | Show GPG/SSH signature status in the graph               |

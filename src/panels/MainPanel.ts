@@ -5,6 +5,7 @@ import { GitService, GitError } from '../git/git-service';
 import { formatGitError, isAuthFailure, transportFromRemoteUrl } from '../git/git-error-formatter';
 import { splitUpstreamRef } from '../git/git-parser';
 import { samePath } from '../utils/path';
+import { readTimeoutMs } from '../utils/config';
 import { buildFullGraph } from '../git/git-graph-builder';
 import { compileBranchColorRules, makeBranchColorResolver } from '../git/branch-color-resolver';
 import { resolveGraphColors } from '../git/graph-colors';
@@ -113,6 +114,7 @@ export class MainPanel {
     // prompt as the SCM panel. Once they sign in, the OS credential helper
     // caches it and our retried spawn-based command succeeds.
     svc.setAuthRetryHandler(remote => triggerVSCodeGitAuth(repoPath, remote));
+    svc.setDefaultTimeout(readTimeoutMs());
     return svc;
   }
 
@@ -199,6 +201,9 @@ export class MainPanel {
         }
         if (e.affectsConfiguration('gitGraphPlus.graphColors')) {
           this.post({ type: 'setGraphColors', payload: { colors: this.readGraphColors() } });
+        }
+        if (e.affectsConfiguration('gitGraphPlus.timeout')) {
+          this.gitService.setDefaultTimeout(readTimeoutMs());
         }
       })
     );

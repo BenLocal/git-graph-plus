@@ -391,6 +391,12 @@
           "default": "auto",
           "description": "UI language (auto = follow VS Code language setting)"
         },
+        "gitGraphPlus.timeout": {
+          "type": "integer",
+          "default": 60,
+          "minimum": 1,
+          "markdownDescription": "Maximum time (in seconds) to wait for a Git command before it is aborted. Increase this if the graph times out while loading in a very large repository."
+        },
         "gitGraphPlus.graphSortOrder": {
           "type": "string",
           "enum": [

@@ -27,6 +27,7 @@ const H = vi.hoisted(() => {
     setWarningHandler: vi.fn(),
     setAuthRetryHandler: vi.fn(),
     setExtraEnv: vi.fn(),
+    setDefaultTimeout: vi.fn(),
   };
   return {
     git,

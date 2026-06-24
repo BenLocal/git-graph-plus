@@ -58,6 +58,10 @@ export class GitService {
   private remoteNamesCacheTime = 0;
   private pendingRemoteNames: Promise<string[]> | null = null;
   private extraEnv: Record<string, string> = {};
+  // Default per-command timeout (ms). Callers can override per call via the
+  // `timeout` option; this is the fallback used when they don't. Configurable
+  // via the `gitGraphPlus.timeout` setting so large repos can extend it.
+  private defaultTimeoutMs = 60000;
   private warningHandler: ((message: string) => void) | null = null;
   private authRetryHandler: ((remote?: string) => Promise<boolean>) | null = null;
   // In-flight read-only operations, keyed by op name. Lets two callers (e.g.
@@ -74,6 +78,17 @@ export class GitService {
   }
 
   constructor(private repoPath: string) {}
+
+  /**
+   * Override the default per-command timeout (in milliseconds). Non-positive
+   * or non-finite values are ignored, keeping the built-in fallback. Wired to
+   * the `gitGraphPlus.timeout` setting so users with large repos can extend it.
+   */
+  setDefaultTimeout(ms: number): void {
+    if (typeof ms === 'number' && Number.isFinite(ms) && ms > 0) {
+      this.defaultTimeoutMs = ms;
+    }
+  }
 
   /** Register a callback for non-fatal warnings (e.g., auxiliary git command failures). */
   setWarningHandler(handler: ((message: string) => void) | null): void {
@@ -276,7 +291,7 @@ export class GitService {
   private exec(args: string[], options?: { stdin?: string; timeout?: number; silent?: boolean; maxBufferBytes?: number }): Promise<string> {
     const startTime = Date.now();
     const command = `git ${args.join(' ')}`;
-    const timeoutMs = options?.timeout ?? 30000;
+    const timeoutMs = options?.timeout ?? this.defaultTimeoutMs;
     const maxBytes = options?.maxBufferBytes ?? DEFAULT_MAX_BUFFER_BYTES;
 
     return new Promise((resolve, reject) => {

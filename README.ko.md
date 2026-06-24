@@ -172,6 +172,7 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | 설정                                   | 기본값        | 설명                                                  |
 | -------------------------------------- | ------------- | ----------------------------------------------------- |
 | `gitGraphPlus.autoRefresh`             | `true`        | 리포지토리 변경 감지 시 자동 새로고침                 |
+| `gitGraphPlus.timeout`                 | `60`          | Git 명령 중단 전 최대 대기 시간 (초)                  |
 | `gitGraphPlus.locale`                  | `auto`        | UI 언어 (`auto`, `en`, `ko`, `zh-cn`)                 |
 | `gitGraphPlus.graphSortOrder`          | `topological` | 커밋 정렬 순서 (`topological`, `date`, `author-date`) |
 | `gitGraphPlus.showSignatureStatus`     | `true`        | 그래프에 GPG/SSH 서명 상태 표시                       |
