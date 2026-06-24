@@ -86,6 +86,8 @@
   "pushed": "推送完成",
   "rebased": "已变基到 '{0}'",
   "rebasedAndPushed": "已变基到 '{0}' 并完成 push",
+  "squashed": "已将 {0} 个提交 squash",
+  "interactiveRebaseComplete": "交互式变基已完成",
   "pushAfterRebaseNoRemote": "已变基到 '{0}'。未配置 remote，已跳过 push。",
   "pushAfterRebaseFailed": "变基成功，但后续 push 失败：{0}",
   "cherryPicked": "已遴选 {0}",

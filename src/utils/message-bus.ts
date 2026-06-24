@@ -43,7 +43,7 @@ export type WebviewMessage =
   | { type: 'abortRebase' }
   | { type: 'continueRebase' }
   | { type: 'skipRebase' }
-  | { type: 'interactiveRebase'; payload: { base: string; todos: Array<{ action: string; hash: string; subject: string; message?: string }> } }
+  | { type: 'interactiveRebase'; payload: { base: string; todos: Array<{ action: string; hash: string; subject: string; message?: string }>; squashCount?: number } }
   | { type: 'getRebaseCommits'; payload: { base: string } }
   | { type: 'reset'; payload: { ref: string; mode: 'soft' | 'mixed' | 'hard' } }
   | { type: 'push'; payload: { remote?: string; branch?: string; force?: 'with-lease' | 'force'; setUpstream?: boolean } }

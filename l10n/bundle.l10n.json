@@ -86,6 +86,8 @@
   "pushed": "Push complete",
   "rebased": "Rebased onto '{0}'",
   "rebasedAndPushed": "Rebased onto '{0}' and pushed",
+  "squashed": "Squashed {0} commits",
+  "interactiveRebaseComplete": "Interactive rebase complete",
   "pushAfterRebaseNoRemote": "Rebased onto '{0}'. Skipped push - no remote configured.",
   "pushAfterRebaseFailed": "Rebase succeeded, but the follow-up push failed: {0}",
   "cherryPicked": "Cherry-picked {0}",

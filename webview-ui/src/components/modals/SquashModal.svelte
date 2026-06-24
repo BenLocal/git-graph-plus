@@ -48,7 +48,7 @@
     if (!canSquash || !rebaseCommits) return;
     const selectedHashes = chain.map(c => c.hash);
     const todos = buildSquashTodos(rebaseCommits, selectedHashes, chain[0].hash, editedMessage);
-    vscode.postMessage({ type: 'interactiveRebase', payload: { base, todos } });
+    vscode.postMessage({ type: 'interactiveRebase', payload: { base, todos, squashCount: chain.length } });
     onClose();
   }
 </script>

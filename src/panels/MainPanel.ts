@@ -843,6 +843,14 @@ export class MainPanel {
         case 'interactiveRebase': {
           await this.gitService.interactiveRebase(message.payload.base, message.payload.todos);
           this.post({ type: 'operationComplete', payload: { operation: 'interactiveRebase', success: true } });
+          // A squash routes through this same backend; surface a dedicated
+          // confirmation, otherwise a generic one so the rebase never completes
+          // silently.
+          if (message.payload.squashCount) {
+            vscode.window.showInformationMessage(vscode.l10n.t('squashed', String(message.payload.squashCount)));
+          } else {
+            vscode.window.showInformationMessage(vscode.l10n.t('interactiveRebaseComplete'));
+          }
           await this.refreshAll();
           break;
         }
