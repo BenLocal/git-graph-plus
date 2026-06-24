@@ -125,4 +125,46 @@ describe('AvatarCache', () => {
     const files = await fs.readdir(tmpDir);
     expect(files.length).toBeLessThanOrEqual(2);
   });
+
+  it('falls back to image/png when the fetcher reports no content type', async () => {
+    const fetcher: AvatarFetcher = async () => ({ data: Buffer.from([1, 2, 3]), contentType: '' });
+    const cache = new AvatarCache(null, fetcher);
+
+    const uri = await cache.get('alice@example.com', 32);
+
+    expect(uri).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it('evicts the least-recently-used entry once memory exceeds its cap', async () => {
+    // MAX_MEMORY_ENTRIES is 500; the 501st distinct avatar evicts the oldest.
+    const { fetcher, calls } = makeFetcher();
+    const cache = new AvatarCache(null, fetcher); // memory-only, no disk
+
+    for (let i = 0; i <= 500; i++) await cache.get(`u${i}@example.com`, 32);
+    expect(calls).toHaveLength(501);
+
+    // u0 was the oldest and was evicted when u500 pushed the map past the cap,
+    // so requesting it again re-fetches.
+    await cache.get('u0@example.com', 32);
+    expect(calls).toHaveLength(502);
+
+    // A recently-used entry is still served from memory (no extra fetch).
+    await cache.get('u500@example.com', 32);
+    expect(calls).toHaveLength(502);
+  });
+
+  it('still returns the avatar when the best-effort disk write fails', async () => {
+    // Point the cache dir at an existing *file* so mkdir/writeFile throw; the
+    // write is best-effort and must not stop the avatar from being served.
+    const filePath = path.join(tmpDir, 'not-a-directory');
+    await fs.writeFile(filePath, 'x');
+
+    const { fetcher, calls } = makeFetcher();
+    const cache = new AvatarCache(filePath, fetcher);
+
+    const uri = await cache.get('alice@example.com', 32);
+
+    expect(uri).toMatch(/^data:image\/png;base64,/);
+    expect(calls).toHaveLength(1);
+  });
 });
