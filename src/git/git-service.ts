@@ -1003,8 +1003,36 @@ export class GitService {
     return Array.from(merged.values());
   }
 
+  /**
+   * If `hash` is one of the repo's stashes, returns its parent hashes
+   * (parent 1 = base commit, parent 2 = index snapshot, parent 3 = untracked
+   * snapshot when the stash was created with --include-untracked). Returns
+   * null for ordinary commits.
+   *
+   * A stash is internally a merge commit, so the generic merge-diff path would
+   * union the diff against every parent — including the untracked snapshot,
+   * which is a parentless commit holding only the untracked files. Diffing the
+   * stash against that snapshot reports nearly every tracked file as "added"
+   * and the untracked files as "deleted" (issue #45). Callers special-case
+   * stashes so the changes view shows only what the stash actually changed.
+   */
+  private async stashParents(hash: string): Promise<string[] | null> {
+    const stashes = await this.stashList();
+    const isStash = stashes.some(s =>
+      s.hash && (s.hash === hash || s.hash.startsWith(hash) || hash.startsWith(s.hash)),
+    );
+    if (!isStash) return null;
+    return this.commitParents(hash);
+  }
+
   async showCommitFiles(hash: string): Promise<Array<{ path: string; status: string; oldPath?: string }>> {
     this.assertSafeRef(hash, 'show');
+
+    const stashParents = await this.stashParents(hash);
+    if (stashParents) {
+      return this.showStashFiles(hash, stashParents);
+    }
+
     const parents = await this.commitParents(hash);
 
     if (parents.length === 0) {
@@ -1029,9 +1057,41 @@ export class GitService {
     return this.mergeNameStatus(perParent);
   }
 
+  /**
+   * File list for a stash: tracked changes vs the base commit (first parent),
+   * plus the untracked snapshot (third parent, when present) whose files are
+   * all additions. See {@link stashParents} for why the generic path is wrong.
+   */
+  private async showStashFiles(
+    hash: string,
+    parents: string[],
+  ): Promise<Array<{ path: string; status: string; oldPath?: string }>> {
+    const lists: Array<Array<{ path: string; status: string; oldPath?: string }>> = [];
+
+    this.assertSafeRef(parents[0], 'diff');
+    const tracked = await this.exec(['diff', '--name-status', `${parents[0]}..${hash}`]);
+    lists.push(this.parseNameStatus(tracked));
+
+    if (parents.length >= 3) {
+      this.assertSafeRef(parents[2], 'diff');
+      const untracked = await this.exec(
+        ['diff-tree', '--no-commit-id', '--name-status', '-r', '--root', parents[2]],
+      );
+      lists.push(this.parseNameStatus(untracked));
+    }
+
+    return this.mergeNameStatus(lists);
+  }
+
   async showCommitDiff(hash: string, file?: string): Promise<DiffData[]> {
     this.assertSafeRef(hash, 'show');
     if (file) this.assertSafePath(file, 'show');
+
+    const stashParents = await this.stashParents(hash);
+    if (stashParents) {
+      return this.showStashDiff(hash, stashParents, file);
+    }
+
     const parents = await this.commitParents(hash);
 
     if (parents.length === 0) {
@@ -1062,6 +1122,32 @@ export class GitService {
     if (file) args.push('--', file);
     const raw = await this.exec(args);
     return parseDiff(raw);
+  }
+
+  /**
+   * Diff for a stash: tracked changes vs the base commit (first parent), plus
+   * the untracked snapshot (third parent, when present) shown as additions.
+   * See {@link stashParents} for why the generic path is wrong.
+   */
+  private async showStashDiff(hash: string, parents: string[], file?: string): Promise<DiffData[]> {
+    this.assertSafeRef(parents[0], 'diff');
+    const trackedArgs = ['diff', '--no-color', `${parents[0]}..${hash}`];
+    if (file) trackedArgs.push('--', file);
+    const tracked = parseDiff(await this.exec(trackedArgs));
+
+    // A requested file that lives in the tracked diff needs no untracked lookup.
+    if (file && tracked.length > 0) return tracked;
+
+    let untracked: DiffData[] = [];
+    if (parents.length >= 3) {
+      this.assertSafeRef(parents[2], 'diff');
+      const untrackedArgs = ['show', '--no-color', '--format=', parents[2]];
+      if (file) untrackedArgs.push('--', file);
+      untracked = parseDiff(await this.exec(untrackedArgs));
+    }
+
+    if (file) return untracked;
+    return [...tracked, ...untracked];
   }
 
   // 3+ multi-select: union file list + per-commit diff sections. Every union file

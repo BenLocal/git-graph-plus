@@ -302,6 +302,64 @@ describe('GitService integration — state mutations', () => {
     });
   });
 
+  // A stash is internally a merge commit (parent 1 = base, parent 2 = index,
+  // parent 3 = untracked snapshot). The diff viewer must show only what the
+  // stash actually changed vs its base — not a union against every parent,
+  // which falsely flags most of the repo as added/deleted (issue #45).
+  describe('stash diff (issue #45)', () => {
+    beforeEach(() => {
+      commit(repo.path, 'init', { 'a.txt': 'one\n' });
+    });
+
+    async function stashHash(): Promise<string> {
+      const stashes = await svc.stashList();
+      return stashes[0].hash!;
+    }
+
+    it('showCommitFiles on an untracked-only stash lists just the stashed file', async () => {
+      writeFileSync(join(repo.path, 'b.txt'), 'b\n');
+      await svc.stashSave('untracked only', true); // -u
+
+      const files = await svc.showCommitFiles(await stashHash());
+      const paths = files.map(f => f.path);
+
+      expect(paths).toEqual(['b.txt']);
+      expect(files[0].status).toBe('A');
+    });
+
+    it('showCommitDiff on an untracked-only stash returns just the stashed file', async () => {
+      writeFileSync(join(repo.path, 'b.txt'), 'b\n');
+      await svc.stashSave('untracked only', true); // -u
+
+      const diffs = await svc.showCommitDiff(await stashHash());
+
+      expect(diffs.map(d => d.file)).toEqual(['b.txt']);
+    });
+
+    it('showCommitFiles on a tracked-change stash lists only the modified file', async () => {
+      writeFileSync(join(repo.path, 'a.txt'), 'two\n');
+      await svc.stashSave('tracked change');
+
+      const files = await svc.showCommitFiles(await stashHash());
+
+      expect(files.map(f => f.path)).toEqual(['a.txt']);
+      expect(files[0].status).toBe('M');
+    });
+
+    it('showCommitFiles on a mixed stash lists tracked and untracked changes only', async () => {
+      writeFileSync(join(repo.path, 'a.txt'), 'two\n'); // tracked modify
+      writeFileSync(join(repo.path, 'b.txt'), 'b\n');    // untracked add
+      await svc.stashSave('mixed', true); // -u
+
+      const files = await svc.showCommitFiles(await stashHash());
+      const byPath = new Map(files.map(f => [f.path, f.status]));
+
+      expect([...byPath.keys()].sort()).toEqual(['a.txt', 'b.txt']);
+      expect(byPath.get('a.txt')).toBe('M');
+      expect(byPath.get('b.txt')).toBe('A');
+    });
+  });
+
   describe('reset', () => {
     it('soft reset keeps working tree, moves HEAD', async () => {
       commit(repo.path, 'first', { 'a.txt': '1\n' });
