@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { GitService } from '../../git-service';
-import { TempRepo, commit, createTempRepo, runGit } from './helpers';
+import { TempRepo, commit, createTempRepo, head, runGit, writeFile } from './helpers';
 
 // Two edits far enough apart (line 2 and line 14) that git keeps them in
 // separate hunks rather than merging them.
@@ -160,6 +160,67 @@ describe('GitService integration — reverseCommitChanges', () => {
 
   it('throws when the file was not changed by the commit', async () => {
     await expect(svc.reverseCommitChanges(hash, 'does-not-exist.txt')).rejects.toThrow();
+  });
+
+  it('reverses a change introduced by the root commit (diffs against the empty tree)', async () => {
+    // The root commit has no parent, so its diff is taken against the empty tree
+    // via `git show`. Use a fresh repo whose root commit is still HEAD so the
+    // reverse applies cleanly; reversing the root's addition removes the file.
+    const rootRepo = createTempRepo();
+    try {
+      const rootSvc = new GitService(rootRepo.path);
+      const root = commit(rootRepo.path, 'root', { 'r.txt': 'one\ntwo\n' });
+      expect(existsSync(join(rootRepo.path, 'r.txt'))).toBe(true);
+
+      await rootSvc.reverseCommitChanges(root, 'r.txt');
+      expect(existsSync(join(rootRepo.path, 'r.txt'))).toBe(false);
+    } finally {
+      rootRepo.cleanup();
+    }
+  });
+});
+
+// A merge commit has 2+ parents, so the diff is taken against the first parent
+// whose change for the file is non-empty (mirroring showCommitDiff).
+describe('GitService integration — reverseCommitChanges on a merge commit', () => {
+  let repo: TempRepo;
+  let svc: GitService;
+
+  beforeEach(() => {
+    repo = createTempRepo();
+    svc = new GitService(repo.path);
+  });
+  afterEach(() => repo.cleanup());
+
+  // Builds: main(base → main work) and feature(base → feature work), then an
+  // "evil merge" that ALSO edits m.txt while merging. The merge commit's diff
+  // for m.txt against its first parent (main work) is therefore non-empty.
+  function buildEvilMerge(): string {
+    commit(repo.path, 'base', { 'm.txt': 'x\n', 'side.txt': 's\n' });
+    runGit(repo.path, ['checkout', '-b', 'feature']);
+    commit(repo.path, 'feature work', { 'feature.txt': 'f\n' });
+    runGit(repo.path, ['checkout', 'main']);
+    commit(repo.path, 'main work', { 'main.txt': 'mm\n' });
+    runGit(repo.path, ['merge', '--no-ff', '--no-commit', 'feature']);
+    writeFile(repo.path, 'm.txt', 'x\ny\n'); // change folded into the merge itself
+    runGit(repo.path, ['add', '-A']);
+    runGit(repo.path, ['commit', '--no-edit']);
+    return head(repo.path);
+  }
+
+  it('reverses a change made by the merge commit itself', async () => {
+    const mergeHash = buildEvilMerge();
+    expect(runGit(repo.path, ['rev-list', '--parents', '-n1', mergeHash]).trim().split(' ').length).toBe(3);
+
+    await svc.reverseCommitChanges(mergeHash, 'm.txt');
+    // The merge added the `y` line; reversing restores the first parent's content.
+    expect(read(repo, 'm.txt')).toBe('x\n');
+  });
+
+  it('throws for a file the merge left identical to both parents', async () => {
+    const mergeHash = buildEvilMerge();
+    // side.txt is unchanged everywhere, so every parent diff is empty.
+    await expect(svc.reverseCommitChanges(mergeHash, 'side.txt')).rejects.toThrow(/No changes to reverse/);
   });
 });
 

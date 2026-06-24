@@ -269,6 +269,120 @@ index 83db48f..0000000
     );
   });
 
+  it('rewrites a whole-file-delete header into a modification when the new side becomes non-empty', () => {
+    // Real git never emits a `+++ /dev/null` diff with surviving new-side
+    // content, but the header normalizer defends against it symmetrically with
+    // the add case. Craft a `deleted file` diff that carries a context line so a
+    // partial reverse leaves `newCount > 0`, forcing the `+++ /dev/null` rewrite.
+    const DELETED_WITH_CONTEXT = `diff --git a/old.txt b/old.txt
+deleted file mode 100644
+index 83db48f..0000000
+--- a/old.txt
++++ /dev/null
+@@ -1,3 +0,0 @@
+-line1
+ line2
+-line3
+`;
+    // Reverse only line1 (index 0); line3's deletion is dropped, line2 stays as
+    // context → the new side is non-empty, so `+++ /dev/null` must be rewritten.
+    const patch = buildReversePatch(DELETED_WITH_CONTEXT, 0, [0]);
+    expect(patch).toBe(
+      [
+        'diff --git a/old.txt b/old.txt',
+        'index 83db48f..0000000 100644', // mode folded in from `deleted file mode`
+        '--- a/old.txt',
+        '+++ b/old.txt', //               was `+++ /dev/null`
+        '@@ -1,2 +0,1 @@',
+        '-line1', // restored on reverse-apply
+        ' line2', // kept context — the now-non-empty new side
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('keeps a blank (space-stripped) context line in the middle of a hunk', () => {
+    // A blank context line whose leading ' ' was stripped must be preserved as a
+    // single-space context line, not skipped (only the trailing split artifact is).
+    const blankCtx = `diff --git a/f b/f
+index 1..2 100644
+--- a/f
++++ b/f
+@@ -1,3 +1,3 @@
+ top
+
+-mid
++MID
+`;
+    const patch = buildReversePatch(blankCtx, 0);
+    expect(patch).toBe(
+      [
+        'diff --git a/f b/f',
+        'index 1..2 100644',
+        '--- a/f',
+        '+++ b/f',
+        '@@ -1,3 +1,3 @@',
+        ' top',
+        ' ', // blank line preserved as a space-only context line
+        '-mid',
+        '+MID',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('passes through a hunk header it cannot parse', () => {
+    // A malformed `@@` header (no line numbers) can't be recounted, so it is
+    // emitted verbatim rather than mangled.
+    const malformed = `diff --git a/f b/f
+index 1..2 100644
+--- a/f
++++ b/f
+@@ malformed @@
+-a
++b
+`;
+    const patch = buildReversePatch(malformed, 0);
+    expect(patch.split('\n')).toContain('@@ malformed @@');
+    expect(patch).toContain('-a');
+    expect(patch).toContain('+b');
+  });
+
+  it('throws for a diff that contains no hunks', () => {
+    // Header-only diffs (e.g. a pure mode/rename change) have no hunk to reverse.
+    const noHunk = 'diff --git a/f b/f\nold mode 100644\nnew mode 100755\n';
+    expect(() => buildReversePatch(noHunk, 0)).toThrow(/not found/);
+  });
+
+  it('keeps the no-newline marker when reversing one line of a deleted no-EOF file', () => {
+    // The deleted file ended without a trailing newline. Restoring only its last
+    // line must reproduce that line, still unterminated, on the recreated file.
+    const deletedNoEof = `diff --git a/f b/f
+deleted file mode 100644
+index 1234567..0000000 100644
+--- a/f
++++ /dev/null
+@@ -1,2 +0,0 @@
+-p
+-q
+\\ No newline at end of file
+`;
+    const patch = buildReversePatch(deletedNoEof, 0, [1]);
+    expect(patch).toBe(
+      [
+        'diff --git a/f b/f',
+        'deleted file mode 100644',
+        'index 1234567..0000000 100644',
+        '--- a/f',
+        '+++ /dev/null',
+        '@@ -1,1 +0,0 @@',
+        '-q', // restored on reverse-apply...
+        '\\ No newline at end of file', // ...still unterminated
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('throws for an out-of-range hunk index', () => {
     expect(() => buildReversePatch(SAMPLE, 5)).toThrow(/not found/);
   });
