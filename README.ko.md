@@ -40,8 +40,10 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | **커밋 정렬**     | Fork와 같은 위상순 정렬로 명확한 브랜치 히스토리 표시                                     |
 | **세 가지 뷰**    | **그래프**로 시각적 히스토리, **Reflog**로 git 참조 로그 탐색, **통계**로 분석            |
 | **커밋 상세**     | 커밋 클릭으로 메타데이터, 변경 파일, 전체 diff를 크기 조절 가능한 하단 패널에서 확인      |
+| **커밋 링크**     | 커밋 메시지의 이슈·PR·머지 리퀘스트 참조를 클릭 가능한 링크로 변환 - `origin`에서 GitHub/GitLab 자동 감지 및 사용자 정의 정규식 규칙 지원 |
 | **커밋 비교**     | 기준 커밋 선택 후 다른 커밋 클릭으로 비교 - 또는 커밋과 작업 트리 비교                    |
 | **검색**          | 메시지, 작성자, 날짜 범위, 해시, 변경된 파일로 커밋 검색 - 결과 하이라이트 및 키보드 탐색 |
+| **키보드 탐색**   | 방향키로 그래프 선택 이동, Ctrl/Cmd로 첫 부모 또는 최신 자식으로 점프하며 돌아올 경로 기억 |
 | **브랜치 필터**   | 선택한 브랜치에서 도달 가능한 커밋만 표시하도록 커밋 그래프 필터링                        |
 | **미커밋 변경사항** | 미커밋 변경사항을 가상 노드로 표시합니다. 클릭 시 VS Code SCM 뷰를 열어 스테이징 및 커밋이 가능합니다. |
 | **Push 상태**     | 로컬 전용 커밋은 파란 점 (push 안 됨), 리모트 전용 커밋은 회색 점 (리모트가 앞서감)       |
@@ -73,7 +75,7 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 
 | 기능                    | 설명                                                                     |
 | ----------------------- | ------------------------------------------------------------------------ |
-| **Fetch / Pull / Push** | 리모트 선택 다이얼로그 및 진행 상태 알림                                 |
+| **Fetch / Pull / Push** | 리모트 선택 다이얼로그 및 진행 상태 알림 - 리모트가 하나뿐이면 fetch는 다이얼로그 생략 |
 | **리모트 관리**         | 리모트 추가 및 제거                                                      |
 | **강제 Push**           | `--force-with-lease` (안전) 또는 `--force` (강제) 모드, 시각적 경고 표시 |
 | **자동 Fetch**          | 설정 가능한 주기적 fetch 간격 (1–60분)                                   |
@@ -179,6 +181,8 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | `gitGraphPlus.locale`                  | `auto`        | UI 언어 (`auto`, `en`, `ko`, `zh-cn`)                 |
 | `gitGraphPlus.graphSortOrder`          | `topological` | 커밋 정렬 순서 (`topological`, `date`, `author-date`) |
 | `gitGraphPlus.showSignatureStatus`     | `true`        | 그래프에 GPG/SSH 서명 상태 표시                       |
+| `gitGraphPlus.commitMessageLinks`      | `[]`          | 커밋 메시지 텍스트를 클릭 가능한 링크로 만드는 사용자 정의 `{ pattern, url }` 정규식 규칙 |
+| `gitGraphPlus.autoDetectRepoLinks`     | `true`        | `origin` 리모트 기반으로 `#123` 이슈(github.com/gitlab.com)와 `!123` GitLab MR 자동 링크 |
 | `gitGraphPlus.branchBadgeBarThickness` | `thin`        | 브랜치 배지 색상 바 두께 (`thin`, `medium`, `thick`)  |
 | `gitGraphPlus.branchColors`            | `[]`          | 이름 패턴별 고정 브랜치 색 (정규식 → hex)             |
 | `gitGraphPlus.graphColors`             | 12색          | 그래프 레일에 자동 할당되는 색 팔레트 (hex 문자열)    |

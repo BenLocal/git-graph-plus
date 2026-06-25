@@ -40,8 +40,10 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Commit Ordering**     | Topological ordering like Fork for clear branch history                                                               |
 | **Three Views**         | **Graph** for visual history, **Reflog** for git reference log history, **Statistics** for analytics                  |
 | **Commit Details**      | Click any commit to view metadata, changed files, and full diffs in a resizable bottom panel                          |
+| **Commit Links**        | Issue, PR, and merge-request references in commit messages become clickable links - GitHub/GitLab auto-detected from `origin`, plus custom regex rules |
 | **Commit Comparison**   | Select a base commit, then click another to compare - or compare any commit to your working tree                      |
 | **Search**              | Find commits by message, author, date range, hash, or changed file - with result highlighting and keyboard navigation |
+| **Keyboard Navigation** | Move the graph selection with arrow keys; Ctrl/Cmd jumps to the first parent or newest child, remembering the path back |
 | **Branch Filter**       | Filter the commit graph to show only commits reachable from a selected branch                                         |
 | **Uncommitted Changes** | Shows pending uncommitted changes as a virtual node. Clicking it opens the VS Code SCM view for staging/committing. |
 | **Push Status**         | Blue dot for local-only commits (not pushed), gray dot for remote-only commits (remote ahead)                         |
@@ -73,7 +75,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 
 | Feature                 | Description                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------ |
-| **Fetch / Pull / Push** | With remote selection dialog and progress notification                         |
+| **Fetch / Pull / Push** | With remote selection dialog and progress notification - fetch skips the dialog when only one remote exists |
 | **Remote Management**   | Add and remove remotes                                                         |
 | **Force Push**          | `--force-with-lease` (safe) or `--force` (override) modes, with visual warning |
 | **Auto Fetch**          | Configurable periodic fetch interval (1–60 minutes)                            |
@@ -179,6 +181,8 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | `gitGraphPlus.locale`                  | `auto`        | UI language (`auto`, `en`, `ko`, `zh-cn`)                |
 | `gitGraphPlus.graphSortOrder`          | `topological` | Commit sort order (`topological`, `date`, `author-date`) |
 | `gitGraphPlus.showSignatureStatus`     | `true`        | Show GPG/SSH signature status in the graph               |
+| `gitGraphPlus.commitMessageLinks`      | `[]`          | Custom `{ pattern, url }` regex rules that turn commit-message text into clickable links |
+| `gitGraphPlus.autoDetectRepoLinks`     | `true`        | Auto-link `#123` issues (github.com/gitlab.com) and `!123` GitLab MRs from the `origin` remote |
 | `gitGraphPlus.branchBadgeBarThickness` | `thin`        | Branch badge bar thickness (`thin`, `medium`, `thick`)   |
 | `gitGraphPlus.branchColors`            | `[]`          | Fixed branch colors by name pattern (regex → hex)        |
 | `gitGraphPlus.graphColors`             | 12 colors     | Color palette auto-assigned to graph rails (hex strings) |

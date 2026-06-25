@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 (2026-06-25)
+
+### New Features
+- **Reverse Changes** - Undo a commit's changes against your working tree straight from the diff viewer: reverse a whole file, a single hunk, or just gutter-selected lines - added and deleted files included - and copy selected diff lines.
+- **Commit Message Links** - Issue, PR, and merge-request references in commit messages become clickable links across the Graph, Commit Details, and Reflog views. GitHub/GitLab references are auto-detected from the `origin` remote (`gitGraphPlus.autoDetectRepoLinks`), and you can add your own regex rules (`gitGraphPlus.commitMessageLinks`). Links open in your browser.
+- **Commit Graph Keyboard Navigation** - Move the graph selection with the arrow keys; Ctrl/Cmd jumps to the first parent (down) or newest child (up) and remembers the path, so reversing a jump returns you to where you came from.
+- **Stash Uncommitted Changes** - The uncommitted-changes node now offers a stash option in its context menu, so you can stash your working changes without leaving the graph.
+- **Single-Remote Auto Fetch** - When a repository has only one remote, fetching skips the remote-selection dialog and fetches (with prune) directly, since there is nothing to choose.
+
+### Bug Fixes
+- **Markdown & Custom Diff Tools** - The diff viewer now uses the standard `git:` URI scheme, so markdown and other custom diff tools render the diff correctly instead of showing raw content.
+- **Reflog SHA Overflow** - A long SHA in the Reflog view is now clipped instead of overflowing and overlapping the adjacent column.
+- **Tooltip on Drag** - Tooltips are now dismissed when a native drag starts, instead of lingering over the item being dragged.
+
 ## 0.5.5 (2026-06-25)
 
 ### New Features
