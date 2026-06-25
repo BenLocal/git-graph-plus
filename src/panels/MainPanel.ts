@@ -1599,6 +1599,27 @@ export class MainPanel {
     }
   }
 
+  /**
+   * Builds a `git:`-scheme URI in the exact format VS Code's built-in Git
+   * extension understands (mirrors its internal `toGitUri`). Using the standard
+   * scheme — rather than our own provider — lets the built-in content provider
+   * serve the blob and, crucially, lets markdown-diff tooling recognise the
+   * comparison: "Reopen editor with…" and extensions like `mddiff` only handle
+   * the `git:` scheme. (#51)
+   *
+   * ref conventions match the built-in extension: '' → index (stage 0),
+   * 'HEAD'/<sha>/<sha>~1 → that revision (`git show <ref>:<path>`). The query
+   * `path` is the absolute fsPath; the URI path keeps the file extension so the
+   * editor still infers the language.
+   */
+  private toGitUri(fullPath: string, ref: string): vscode.Uri {
+    const fileUri = vscode.Uri.file(fullPath);
+    return fileUri.with({
+      scheme: 'git',
+      query: JSON.stringify({ path: fileUri.fsPath, ref }),
+    });
+  }
+
   private async openDiffInEditor(
     file: string,
     staged?: boolean,
@@ -1613,51 +1634,35 @@ export class MainPanel {
     if (commitHash) {
       // Commit diff: parent vs commit
       const parentRef = commitHash + '~1';
-      const leftUri = vscode.Uri.parse(`git-graph-plus://show/${parentRef}/${file}`).with({
-        query: JSON.stringify({ ref: parentRef, path: file, repoPath: this.repoPath }),
-      });
-      const rightUri = vscode.Uri.parse(`git-graph-plus://show/${commitHash}/${file}`).with({
-        query: JSON.stringify({ ref: commitHash, path: file, repoPath: this.repoPath }),
-      });
+      const leftUri = this.toGitUri(fullPath, parentRef);
+      const rightUri = this.toGitUri(fullPath, commitHash);
       const title = `${file} (${commitHash.substring(0, 7)})`;
       await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
     } else if (staged) {
       // Staged diff: HEAD vs index
-      const headUri = vscode.Uri.parse(`git-graph-plus://show/HEAD/${file}`).with({
-        query: JSON.stringify({ ref: 'HEAD', path: file, repoPath: this.repoPath }),
-      });
-      const indexUri = vscode.Uri.parse(`git-graph-plus://show/:0/${file}`).with({
-        query: JSON.stringify({ ref: ':0', path: file, repoPath: this.repoPath }),
-      });
+      const headUri = this.toGitUri(fullPath, 'HEAD');
+      const indexUri = this.toGitUri(fullPath, '');
       await vscode.commands.executeCommand('vscode.diff', headUri, indexUri, `${file} (Staged)`);
     } else {
       // Unstaged diff: index vs working tree
-      const indexUri = vscode.Uri.parse(`git-graph-plus://show/:0/${file}`).with({
-        query: JSON.stringify({ ref: ':0', path: file, repoPath: this.repoPath }),
-      });
+      const indexUri = this.toGitUri(fullPath, '');
       await vscode.commands.executeCommand('vscode.diff', indexUri, fileUri, `${file} (Working Tree)`);
     }
   }
 
   private async openCompareDiffInEditor(file: string, ref1: string, ref2: string): Promise<void> {
     // Same validation as openDiffInEditor — the path must stay inside the repo
-    // before being embedded in the diff editor and our content-provider URI.
+    // before being embedded in the diff editor and the content-provider URI.
     const fullPath = this.resolveRepoRelativePath(file, 'openCompareDiff');
     // ref1 = 'working' means compare ref2 against working tree
     if (ref1 === 'working' || ref2 === 'working') {
       const commitRef = ref1 === 'working' ? ref2 : ref1;
-      const commitUri = vscode.Uri.parse(`git-graph-plus://show/${commitRef}/${file}`).with({
-        query: JSON.stringify({ ref: commitRef, path: file, repoPath: this.repoPath }),
-      });
+      const commitUri = this.toGitUri(fullPath, commitRef);
       const fileUri = vscode.Uri.file(fullPath);
       await vscode.commands.executeCommand('vscode.diff', commitUri, fileUri, `${file} (${commitRef.substring(0, 7)} ↔ Working Tree)`);
     } else {
-      const leftUri = vscode.Uri.parse(`git-graph-plus://show/${ref1}/${file}`).with({
-        query: JSON.stringify({ ref: ref1, path: file, repoPath: this.repoPath }),
-      });
-      const rightUri = vscode.Uri.parse(`git-graph-plus://show/${ref2}/${file}`).with({
-        query: JSON.stringify({ ref: ref2, path: file, repoPath: this.repoPath }),
-      });
+      const leftUri = this.toGitUri(fullPath, ref1);
+      const rightUri = this.toGitUri(fullPath, ref2);
       const label1 = ref1.length > 10 ? ref1.substring(0, 7) : ref1;
       const label2 = ref2.length > 10 ? ref2.substring(0, 7) : ref2;
       await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (${label1} ↔ ${label2})`);

@@ -3,7 +3,6 @@ import * as path from 'path';
 import { existsSync } from 'fs';
 import { setGitBinaryPath } from './git/git-binary';
 import { MainPanel } from './panels/MainPanel';
-import { GitContentProvider } from './services/git-content-provider';
 import { GitService } from './git/git-service';
 import { FileWatcher } from './services/file-watcher';
 import { BranchesViewProvider } from './views/branches-view';
@@ -110,12 +109,6 @@ export function activate(context: vscode.ExtensionContext) {
       if (e.affectsConfiguration('git.path')) applyGitPath();
       if (e.affectsConfiguration('gitGraphPlus.timeout')) activeGitService.setDefaultTimeout(readTimeoutMs());
     }),
-  );
-
-  // --- Content Provider for diff URIs ---
-  const contentProvider = new GitContentProvider();
-  context.subscriptions.push(
-    vscode.workspace.registerTextDocumentContentProvider('git-graph-plus', contentProvider)
   );
 
   // --- Tree View Providers ---

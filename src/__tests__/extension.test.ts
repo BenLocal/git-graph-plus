@@ -59,7 +59,6 @@ vi.mock('../panels/MainPanel', () => ({
     static onRepoChange: unknown = null;
   },
 }));
-vi.mock('../services/git-content-provider', () => ({ GitContentProvider: class {} }));
 vi.mock('../git/git-service', () => ({ GitService: class { setExtraEnv() {} setDefaultTimeout() {} get rootPath() { return '/repo'; } worktreeList() { return Promise.resolve(H.worktreeList); } } }));
 vi.mock('../services/file-watcher', () => ({ FileWatcher: class { enabled = true; suppress() {} dispose() {} } }));
 const viewStub = () => ({ ViewProvider: undefined });
