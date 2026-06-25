@@ -15,6 +15,7 @@ import { AvatarCache } from '../services/avatar-cache';
 import { resolveGitDirs, shouldRefreshGraph } from '../services/file-watcher-helpers';
 import { RepoDiscoveryService, RepoInfo } from '../services/repo-discovery';
 import type { WebviewMessage, ModalDefaults } from '../utils/message-bus';
+import { resolveCommitLinkRules, type LinkRule } from '../git/commit-link-rules';
 import {
   resolveRepoRelativePath as resolveRepoRelativePathUtil,
   assertSafeArgPath as assertSafeArgPathUtil,
@@ -161,6 +162,28 @@ export class MainPanel {
     return resolveGraphColors(raw);
   }
 
+  // Resolve commit-message link rules from settings + the origin remote URL.
+  private async getCommitLinkRules(): Promise<LinkRule[]> {
+    const cfg = vscode.workspace.getConfiguration('gitGraphPlus');
+    const custom = cfg.get('commitMessageLinks');
+    const autoDetect = cfg.get<boolean>('autoDetectRepoLinks', true);
+    let remoteUrl: string | null = null;
+    if (autoDetect) {
+      try {
+        remoteUrl = await this.gitService.getRemoteUrl('origin');
+      } catch {
+        // No origin (or no remote) — built-in detection simply yields nothing.
+        remoteUrl = null;
+      }
+    }
+    return resolveCommitLinkRules(custom, autoDetect, remoteUrl);
+  }
+
+  private async postCommitLinkRules(): Promise<void> {
+    const rules = await this.getCommitLinkRules();
+    this.post({ type: 'setCommitLinkRules', payload: { rules } });
+  }
+
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
@@ -202,6 +225,12 @@ export class MainPanel {
         if (e.affectsConfiguration('gitGraphPlus.graphColors')) {
           this.post({ type: 'setGraphColors', payload: { colors: this.readGraphColors() } });
         }
+        if (
+          e.affectsConfiguration('gitGraphPlus.commitMessageLinks') ||
+          e.affectsConfiguration('gitGraphPlus.autoDetectRepoLinks')
+        ) {
+          void this.postCommitLinkRules();
+        }
         if (e.affectsConfiguration('gitGraphPlus.timeout')) {
           this.gitService.setDefaultTimeout(readTimeoutMs());
         }
@@ -218,6 +247,7 @@ export class MainPanel {
     this.post({ type: 'setDefaults', payload: this.readModalDefaults() });
     this.post({ type: 'setBadgeBarThickness', payload: { width: this.readBadgeBarWidth() } });
     this.post({ type: 'setGraphColors', payload: { colors: this.readGraphColors() } });
+    void this.postCommitLinkRules();
 
     this.panel.webview.onDidReceiveMessage(
       (message: WebviewMessage) => this.handleMessage(message),
@@ -700,6 +730,13 @@ export class MainPanel {
           // the message). Without this, focus stays in the SCM view.
           if (message.payload?.returnFocus) {
             this.panel.reveal(this.panel.viewColumn, false);
+          }
+          break;
+        }
+        case 'openExternalUrl': {
+          const url = message.payload?.url;
+          if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+            await vscode.env.openExternal(vscode.Uri.parse(url));
           }
           break;
         }
@@ -1763,6 +1800,7 @@ export class MainPanel {
     if (shouldRefreshGraph(what)) {
       await this.refreshAll();
     }
+    void this.postCommitLinkRules();
 
     // Skip the conflict + operation state probe (2 git subprocess spawns)
     // when we already know no operation is in progress: nothing in memory

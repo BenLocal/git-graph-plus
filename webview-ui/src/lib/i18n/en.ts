@@ -112,6 +112,7 @@ export const en: Record<string, string> = {
   // Graph
   'graph.uncommitted': 'Uncommitted ({staged} staged, {unstaged} unstaged)',
   'graph.clickToOpenScm': 'Click to open Source Control',
+  'graph.openLink': 'Open link',
   'graph.loading': 'Loading commits',
   'graph.noCommits': 'No commits found',
   'graph.notGitRepo': 'This folder is not a Git repository.',

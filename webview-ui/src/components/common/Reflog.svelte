@@ -7,6 +7,7 @@
   import CheckoutCommitModal from '../modals/CheckoutCommitModal.svelte';
   import { branchStore } from '../../lib/stores/branches.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
+  import LinkifiedText from './LinkifiedText.svelte';
 
   const vscode = getVsCodeApi();
 
@@ -390,7 +391,7 @@
             {#if entry.dangling}
               <i class="codicon codicon-warning dangling-icon" use:tooltip={t('reflog.danglingTooltip')}></i>
             {/if}
-            <span class="reflog-msg truncate" use:tooltip={entry.message}>{displayMsg}</span>
+            <span class="reflog-msg truncate" use:tooltip={entry.message}><LinkifiedText text={displayMsg} /></span>
           </div>
           <div class="col-hash" use:tooltip={entry.hash}>{entry.shortHash}</div>
           <div class="col-date" use:tooltip={new Date(entry.date).toLocaleString()}>{relativeTime(entry.date)}</div>

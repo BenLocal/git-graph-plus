@@ -1,5 +1,10 @@
 import type { CommitGraphData, BranchData, DiffData, Commit, WorktreeInfo, CommitSignature } from '../git/types';
 
+export interface LinkRule {
+  pattern: string;
+  url: string;
+}
+
 export interface ModalDefaults {
   push: { force: 'none' | 'with-lease' | 'force'; setUpstream: boolean; allTags: boolean };
   pull: { rebase: boolean; stash: boolean };
@@ -114,7 +119,8 @@ export type WebviewMessage =
   | { type: 'getUncommittedDiff' }
   | { type: 'getUncommittedFileDiff'; payload: { file: string; staged: boolean } }
   | { type: 'getMultiCommitSections'; payload: { hashes: string[] } }
-  | { type: 'getAvatar'; payload: { email: string; size: number } };
+  | { type: 'getAvatar'; payload: { email: string; size: number } }
+  | { type: 'openExternalUrl'; payload: { url: string } };
 
 // Messages from Extension → Webview
 export type ExtensionMessage =
@@ -145,6 +151,7 @@ export type ExtensionMessage =
   | { type: 'setDefaults'; payload: ModalDefaults }
   | { type: 'setBadgeBarThickness'; payload: { width: number } }
   | { type: 'setGraphColors'; payload: { colors: string[] } }
+  | { type: 'setCommitLinkRules'; payload: { rules: LinkRule[] } }
   | { type: 'repoList'; payload: { repos: Array<{ path: string; name: string; type: 'root' | 'submodule' | 'nested' }>; active: string } }
   | { type: 'worktreeData'; payload: WorktreeInfo[] }
   | { type: 'uncommittedDiffData'; payload: { staged: Array<{ path: string; status: string }>; unstaged: Array<{ path: string; status: string }> } }

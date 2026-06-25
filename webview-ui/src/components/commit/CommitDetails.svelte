@@ -13,6 +13,7 @@
   import CommitHoverCard from '../common/CommitHoverCard.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
   import { modalStore } from '../../lib/stores/modals.svelte';
+  import LinkifiedText from '../common/LinkifiedText.svelte';
 
   interface Props {
     commit?: Commit;
@@ -698,9 +699,9 @@
 
       <!-- Commit message -->
       <div class="message-section">
-        <div class="message-subject">{commit.subject}</div>
+        <div class="message-subject"><LinkifiedText text={commit.subject} /></div>
         {#if commit.body}
-          <div class="message-body">{commit.body}</div>
+          <div class="message-body"><LinkifiedText text={commit.body} /></div>
         {/if}
       </div>
     </div>

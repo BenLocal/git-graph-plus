@@ -26,6 +26,7 @@
   import { getSquashChain } from '../../lib/utils/squash';
   import { resolveDrop, dragRebaseMessage, dragMergeMessage } from '../../lib/utils/dragDrop';
   import { computeNavigationTarget, computeScrollTop, computeJumpTarget, type ScrollAlign } from '../../lib/graph-navigation';
+  import LinkifiedText from '../common/LinkifiedText.svelte';
 
 
   /**
@@ -1438,7 +1439,7 @@
                   {@const label = t('graph.uncommitted', { staged: counts.staged ?? 0, unstaged: counts.unstaged ?? 0 })}
                   <span class="commit-subject truncate" use:tooltip={t('graph.clickToOpenScm')}>{label}</span>
                 {:else}
-                  <span class="commit-subject truncate" use:tooltip={commit.subject}>{commit.subject}</span>
+                  <span class="commit-subject truncate" use:tooltip={commit.subject}><LinkifiedText text={commit.subject} /></span>
                 {/if}
             </div>
               {#if horizontalScroll}
