@@ -39,6 +39,10 @@ function bindGlobals() {
   window.addEventListener('blur', hideAll);
   // Escape should always dismiss any visible tooltip, even when focus is trapped.
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideAll(); });
+  // A native HTML5 drag (e.g. dragging a branch badge) does not fire mouseleave on
+  // the dragged element in Chromium/Electron, so its tooltip would otherwise stay
+  // stuck on screen. dragstart bubbles to window — dismiss everything when one begins.
+  window.addEventListener('dragstart', hideAll);
 }
 
 export function tooltip(node: HTMLElement, text: string | undefined) {

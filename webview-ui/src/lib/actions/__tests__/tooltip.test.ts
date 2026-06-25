@@ -134,6 +134,18 @@ describe('tooltip action', () => {
     expect(getTooltipEl()).toBeNull();
   });
 
+  it('dragstart hides the tooltip (native drag suppresses mouseleave)', () => {
+    const node = makeNode();
+    tooltip(node, 'x');
+    node.dispatchEvent(mouseEvent('mouseenter'));
+    vi.advanceTimersByTime(500);
+    expect(getTooltipEl()).not.toBeNull();
+    // A native HTML5 drag starting on the node does not fire mouseleave,
+    // so the tooltip must be dismissed by the drag itself.
+    node.dispatchEvent(new Event('dragstart', { bubbles: true }));
+    expect(getTooltipEl()).toBeNull();
+  });
+
   it('hides when the node becomes disabled (mutation observer)', async () => {
     const node = makeNode();
     tooltip(node, 'x');
