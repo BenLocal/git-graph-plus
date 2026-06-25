@@ -75,6 +75,35 @@ describe('GitService.exec safety guards', () => {
     expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  it('uses a 60s default timeout when none is given', async () => {
+    const p = (service as never as { exec: (a: string[], o?: object) => Promise<string> })
+      .exec(['version'], { silent: true });
+    const assertion = expect(p).rejects.toThrow(/timed out after 60000ms/);
+    // Never emit 'close'; let the default timeout timer fire.
+    await vi.advanceTimersByTimeAsync(60000);
+    await assertion;
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('honors a default timeout overridden via setDefaultTimeout', async () => {
+    service.setDefaultTimeout(120000);
+    const p = (service as never as { exec: (a: string[], o?: object) => Promise<string> })
+      .exec(['version'], { silent: true });
+    const assertion = expect(p).rejects.toThrow(/timed out after 120000ms/);
+    await vi.advanceTimersByTimeAsync(120000);
+    await assertion;
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('ignores a non-positive default timeout and keeps the 60s fallback', async () => {
+    service.setDefaultTimeout(0);
+    const p = (service as never as { exec: (a: string[], o?: object) => Promise<string> })
+      .exec(['version'], { silent: true });
+    const assertion = expect(p).rejects.toThrow(/timed out after 60000ms/);
+    await vi.advanceTimersByTimeAsync(60000);
+    await assertion;
+  });
+
   it('resolves with stdout on a clean exit (control case)', async () => {
     const p = (service as never as { exec: (a: string[], o?: object) => Promise<string> })
       .exec(['version'], { silent: true });

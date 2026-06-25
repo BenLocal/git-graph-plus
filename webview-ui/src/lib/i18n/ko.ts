@@ -217,6 +217,9 @@ export const ko: Record<string, string> = {
   // Multi-select (squash / cherry-pick selected commits)
   'graph.squashCommits': 'Commit {count}개 Squash',
   'graph.cherryPickCommits': 'Commit {count}개 Cherry-pick',
+  'graph.dragRebaseOnto': "'{source}'을(를) '{target}' 위로 rebase",
+  'graph.dragMergeInto': "'{source}'을(를) '{target}'에 merge",
+  'graph.dragDropUncommitted': '브랜치를 드래그하기 전에 변경 사항을 commit하거나 stash하세요.',
   'cherryPickMultiple.title': 'Commit Cherry-pick',
   'cherryPickMultiple.desc': '선택한 {count}개의 commit을 {branch}에 적용합니다.',
   'squash.title': 'Commit Squash',

@@ -217,6 +217,9 @@ export const zh: Record<string, string> = {
   // Multi-select (squash / cherry-pick selected commits)
   'graph.squashCommits': 'Squash {count} 个提交',
   'graph.cherryPickCommits': 'Cherry-pick {count} 个提交',
+  'graph.dragRebaseOnto': "将 '{source}' 变基到 '{target}'",
+  'graph.dragMergeInto': "将 '{source}' 合并到 '{target}'",
+  'graph.dragDropUncommitted': '拖动分支前请先提交或贮藏更改。',
   'cherryPickMultiple.title': 'Cherry-pick 提交',
   'cherryPickMultiple.desc': '将选中的 {count} 个提交应用到 {branch}。',
   'squash.title': 'Squash 提交',

@@ -105,6 +105,81 @@ describe('modalStore — remaining open methods', () => {
   });
 });
 
+describe('modalStore.openStashRestore', () => {
+  it('captures index, message and paths', () => {
+    modalStore.openStashRestore(2, 'wip', ['a.ts', 'b.ts']);
+    expect(modalStore.stashRestore).toEqual({ show: true, index: 2, message: 'wip', paths: ['a.ts', 'b.ts'] });
+    modalStore.closeStashRestore();
+    expect(modalStore.stashRestore.show).toBe(false);
+  });
+});
+
+describe('modalStore.closeForSource', () => {
+  it('is a no-op when the source is undefined', () => {
+    modalStore.openMerge('x', 'y');
+    modalStore.closeForSource(undefined);
+    expect(modalStore.merge.show).toBe(true); // left untouched
+  });
+
+  it('is a no-op for an unknown source', () => {
+    modalStore.openMerge('x', 'y');
+    modalStore.closeForSource('totallyUnknown');
+    expect(modalStore.merge.show).toBe(true);
+  });
+
+  it('closes only the modal that originated the failing operation', () => {
+    modalStore.openMerge('x', 'y');
+    modalStore.openCreateBranch('main');
+    modalStore.closeForSource('merge');
+    expect(modalStore.merge.show).toBe(false);
+    expect(modalStore.createBranch.show).toBe(true); // unrelated, stays open
+  });
+
+  it('maps the deleteRemoteTag source onto the deleteTag modal', () => {
+    modalStore.openDeleteTag('v1.0');
+    modalStore.closeForSource('deleteRemoteTag');
+    expect(modalStore.deleteTag.show).toBe(false);
+  });
+
+  it('maps the checkout source onto the checkoutRemote modal', () => {
+    modalStore.openCheckoutRemote('origin/feature', 'feature');
+    modalStore.closeForSource('checkout');
+    expect(modalStore.checkoutRemote.show).toBe(false);
+  });
+
+  it('maps stashPop and stashDrop onto the stashApply modal', () => {
+    modalStore.openStashApply(0, 'wip', false);
+    modalStore.closeForSource('stashPop');
+    expect(modalStore.stashApply.show).toBe(false);
+
+    modalStore.openStashApply(0, 'wip', true);
+    modalStore.closeForSource('stashDrop');
+    expect(modalStore.stashApply.show).toBe(false);
+  });
+
+  it('flowAction closes both flow modals', () => {
+    modalStore.openFlowStart('feature');
+    modalStore.openFlowFinish('feature', 'feature/x');
+    modalStore.closeForSource('flowAction');
+    expect(modalStore.flowStart.show).toBe(false);
+    expect(modalStore.flowFinish.show).toBe(false);
+  });
+
+  it('handles every known source string without throwing', () => {
+    const sources = [
+      'deleteBranch', 'deleteTag', 'deleteRemoteTag', 'createBranch', 'createTag',
+      'merge', 'checkout', 'checkoutRemote', 'renameBranch', 'deleteRemoteBranch',
+      'worktreeAdd', 'worktreeRemove', 'stashApply', 'stashPop', 'stashDrop',
+      'stashRename', 'stashSave', 'amendCommit', 'setUpstream', 'fetch', 'pull',
+      'push', 'flowInit', 'flowStart', 'flowFinish', 'flowAction', 'pushTag', 'pushAllTags',
+    ];
+    for (const source of sources) {
+      expect(() => modalStore.closeForSource(source)).not.toThrow();
+    }
+    expect(modalStore.anyOpen).toBe(false);
+  });
+});
+
 describe('modalStore.closeAll', () => {
   it('closes every open modal in one call (used on extension error)', () => {
     modalStore.openCreateBranch('main');

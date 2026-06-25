@@ -60,7 +60,7 @@ vi.mock('../panels/MainPanel', () => ({
   },
 }));
 vi.mock('../services/git-content-provider', () => ({ GitContentProvider: class {} }));
-vi.mock('../git/git-service', () => ({ GitService: class { setExtraEnv() {} get rootPath() { return '/repo'; } worktreeList() { return Promise.resolve(H.worktreeList); } } }));
+vi.mock('../git/git-service', () => ({ GitService: class { setExtraEnv() {} setDefaultTimeout() {} get rootPath() { return '/repo'; } worktreeList() { return Promise.resolve(H.worktreeList); } } }));
 vi.mock('../services/file-watcher', () => ({ FileWatcher: class { enabled = true; suppress() {} dispose() {} } }));
 const viewStub = () => ({ ViewProvider: undefined });
 vi.mock('../views/branches-view', () => ({ BranchesViewProvider: class { refresh() {} dispose() {} setGitService() {} prefetch() { return Promise.resolve(); } getCurrentItem() { return null; } } }));

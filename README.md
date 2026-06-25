@@ -22,10 +22,11 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 
 - **Interactive Commit Graph** - Color-coded branch rails and merge lines for clear history at a glance
 - **Full Git Workflow** - Branch, merge, rebase, cherry-pick, reset, stash, worktree, tags, and remote operations
+- **Drag to Rebase & Merge** - Drag one branch onto another to rebase or merge it - no commands needed
 - **Interactive Rebase** - Drag-to-reorder commits with per-commit action control (pick, squash, fixup, drop, etc.)
+- **Conflict Prediction & Resolution** - Preview conflicting files before you run a merge/rebase, then resolve in the VS Code 3-way merge editor
 - **Built-in Diff Viewer** - Shiki-powered syntax highlighting with image diff (side-by-side, swipe, onion-skin)
-- **Conflict Resolution** - Auto-detects conflicts with inline banner and VS Code 3-way merge editor integration
-- **Advanced Tools** - Git Flow, Bisect, LFS with file locks, Submodules, Statistics, and Reflog
+- **Advanced Git Tooling** - Git Flow, Bisect, LFS with file locks, Submodules, Statistics, and Reflog with dangling-commit recovery
 
 ---
 
@@ -61,6 +62,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Merge**                | Default, `--no-ff`, `--ff-only`, and squash merge strategies                                          |
 | **Rebase**               | Standard rebase and interactive rebase with drag-to-reorder UI                                        |
 | **Interactive Rebase**   | Visual UI with action dropdown (pick, reword, edit, squash, fixup, drop) and drop warnings            |
+| **Drag to Rebase/Merge** | Drag one branch onto another in the graph to rebase it onto, or merge it into, the target             |
 | **Squash Commits**       | Select multiple consecutive commits in the graph and squash them into one                             |
 | **Cherry-pick & Revert** | Apply or undo specific commits (one or several selected at once), with `--no-commit` option           |
 | **Reset**                | Reset to any commit with soft, mixed, or hard mode                                                    |
@@ -173,6 +175,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | Setting                                | Default       | Description                                              |
 | -------------------------------------- | ------------- | -------------------------------------------------------- |
 | `gitGraphPlus.autoRefresh`             | `true`        | Auto-refresh on repository changes                       |
+| `gitGraphPlus.timeout`                 | `60`          | Max time (seconds) to wait for a Git command before abort |
 | `gitGraphPlus.locale`                  | `auto`        | UI language (`auto`, `en`, `ko`, `zh-cn`)                |
 | `gitGraphPlus.graphSortOrder`          | `topological` | Commit sort order (`topological`, `date`, `author-date`) |
 | `gitGraphPlus.showSignatureStatus`     | `true`        | Show GPG/SSH signature status in the graph               |

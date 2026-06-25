@@ -93,4 +93,12 @@ describe('commitStore lookups', () => {
     expect(commitStore.getCommit('ccc')?.hash).toBe('ccc');
     expect(commitStore.getGraphNode('ccc')?.column).toBe(5);
   });
+
+  it('commitMap exposes a hash→Commit map for bulk lookups', () => {
+    const map = commitStore.commitMap;
+    expect(map.size).toBe(2);
+    expect(map.get('aaa')?.hash).toBe('aaa');
+    expect(map.get('bbb')?.hash).toBe('bbb');
+    expect(map.get('zzz')).toBeUndefined();
+  });
 });

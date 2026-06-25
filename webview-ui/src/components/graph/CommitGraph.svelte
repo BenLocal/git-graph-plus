@@ -24,6 +24,7 @@
   import type { Commit, CommitGraphData } from '../../lib/types';
   import { tooltip } from '../../lib/actions/tooltip';
   import { getSquashChain } from '../../lib/utils/squash';
+  import { resolveDrop, dragRebaseMessage, dragMergeMessage } from '../../lib/utils/dragDrop';
 
 
   /**
@@ -77,6 +78,8 @@
 
   let contextMenu = $state<{ x: number; y: number; items: any[] } | null>(null);
   let contextMenuHash = $state<string | null>(null);
+  let dragSourceBranch = $state<string | null>(null);
+  let dragOverBranch = $state<string | null>(null);
   const worktreeBranches = $derived(new Set(branchStore.worktrees.filter(w => !w.isMain).map(w => w.branch)));
 
   // Maps for O(1) local branch lookup (replaces repeated branches.find())
@@ -559,6 +562,38 @@
 
   function selectCommit(hash: string) {
     uiStore.selectSingle(hash);
+  }
+
+  function onBranchDrop(e: DragEvent, targetBranch: string) {
+    e.preventDefault();
+    const source = dragSourceBranch;
+    dragSourceBranch = null;
+    dragOverBranch = null;
+    if (!source) return;
+    const localNames = new Set(localBranchMap.keys());
+    const hasUncommitted = commitStore.commits.some(c => c.hash === 'UNCOMMITTED');
+    const res = resolveDrop(source, targetBranch, localNames, hasUncommitted);
+    if (res.kind === 'ignore') return;
+    if (res.kind === 'blocked') {
+      vscode.postMessage({ type: 'showNotification', payload: { message: t('graph.dragDropUncommitted') } });
+      return;
+    }
+    contextMenu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: t('graph.dragRebaseOnto', { source: res.source, target: res.target }),
+          action: () => { vscode.postMessage(dragRebaseMessage(res.source, res.target)); },
+        },
+        {
+          label: t('graph.dragMergeInto', { source: res.source, target: res.target }),
+          action: () => { vscode.postMessage(dragMergeMessage(res.source, res.target)); },
+        },
+        { separator: true, label: '', action: () => {} },
+        { label: t('graph.cancelSelection'), action: () => {} },
+      ],
+    };
   }
 
   function onCommitContextMenu(e: MouseEvent, commit: Commit) {
@@ -1239,6 +1274,22 @@
                     class:badge-fixed={ref.type === 'tag' || ref.type === 'stash' || isWtBranch}
                     class:badge-head={ref.type === 'head'}
                     class:badge-no-bar={showCloudOnly}
+                    draggable={ref.type === 'branch' || ref.type === 'head'}
+                    class:drag-over={dragOverBranch === ref.name && (ref.type === 'branch' || ref.type === 'head')}
+                    ondragstart={(e) => {
+                      if (ref.type !== 'branch' && ref.type !== 'head') return;
+                      dragSourceBranch = ref.name;
+                      e.dataTransfer?.setData('text/plain', ref.name);
+                    }}
+                    ondragover={(e) => {
+                      if ((ref.type === 'branch' || ref.type === 'head') && dragSourceBranch && dragSourceBranch !== ref.name) {
+                        e.preventDefault();
+                        dragOverBranch = ref.name;
+                      }
+                    }}
+                    ondragleave={() => { if (dragOverBranch === ref.name) dragOverBranch = null; }}
+                    ondrop={(e) => { if (ref.type === 'branch' || ref.type === 'head') onBranchDrop(e, ref.name); }}
+                    ondragend={() => { dragSourceBranch = null; dragOverBranch = null; }}
                     use:tooltip={t('graph.dblClickCheckout', { ref: ref.type === 'remote-branch' ? ref.remote + '/' + ref.name : ref.name })}
                     ondblclick={(e) => {
                       e.stopPropagation();
@@ -1917,6 +1968,15 @@
      < tag/stash/worktree (light tint) < current branch (strong tint + bold).
      The bar width is user-configurable via --badge-bar-width (see
      gitGraphPlus.branchBadgeBarThickness). */
+  /* Drag-over target uses the same subtle fill as hover. */
+  .ref-badge.drag-over {
+    box-shadow: inset 0 0 0 100px rgba(255, 255, 255, 0.12);
+  }
+
+  :global(body.vscode-light) .ref-badge.drag-over {
+    box-shadow: inset 0 0 0 100px rgba(0, 0, 0, 0.06);
+  }
+
   .ref-badge {
     position: relative;
     display: inline-flex;

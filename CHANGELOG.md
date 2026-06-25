@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.5 (2026-06-25)
+
+### New Features
+- **Drag to Rebase & Merge** - Drag one branch onto another directly in the graph to rebase it onto, or merge it into, the target branch - no commands or dialogs needed.
+- **Configurable Git Command Timeout** - A new `gitGraphPlus.timeout` setting controls how long to wait for a Git command before it is aborted (default 60s). Raise it if the graph times out while loading in a very large repository.
+
+### Bug Fixes
+- **Stash Diff Scope** - The diff view for a stash entry now shows only that stash's own changes, instead of also including unrelated changes from the working tree.
+- **Rebase & Squash Notification** - You are now notified after squashing commits or completing an interactive rebase, instead of the operation finishing silently.
+
 ## 0.5.4 (2026-06-23)
 
 ### New Features

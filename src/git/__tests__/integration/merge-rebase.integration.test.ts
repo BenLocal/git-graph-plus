@@ -730,6 +730,61 @@ describe('GitService integration — merge / rebase / cherry-pick / revert', () 
     });
   });
 
+  describe('drag-to-rebase-merge sequences', () => {
+    it('drag-rebase: checkout source then rebase onto target replays source on top of target', async () => {
+      // Set up diverging branches: main and feature both start from a common base commit.
+      commit(repo.path, 'base', { 'base.txt': 'base\n' });
+      const baseCommit = head(repo.path);
+      runGit(repo.path, ['checkout', '-b', 'feature']);
+      runGit(repo.path, ['checkout', 'main']);
+      commit(repo.path, 'on main', { 'main.txt': 'main\n' });
+      const mainTip = head(repo.path);
+      runGit(repo.path, ['checkout', 'feature']);
+      commit(repo.path, 'on feature', { 'feature.txt': 'feature\n' });
+
+      // Operation under test: rebase feature onto main (simulating drag-rebase).
+      // We are already on feature (the source branch).
+      await svc.rebase('main');
+
+      // Assert: feature is still current after rebase.
+      expect(currentBranch(repo.path)).toBe('feature');
+
+      // Assert: feature's tip parent is mainTip (the source commit was replayed on top of main).
+      const newParent = runGit(repo.path, ['log', '-1', '--format=%P']).trim();
+      expect(newParent).toBe(mainTip);
+
+      // Assert: "on feature" subject is the HEAD commit; "on main" appears earlier.
+      const subjects = runGit(repo.path, ['log', '--format=%s']).trim().split('\n');
+      expect(subjects[0]).toBe('on feature');
+      expect(subjects).toContain('on main');
+
+      void baseCommit;
+    });
+
+    it('drag-merge: checkout target then merge --no-ff creates a merge commit on target', async () => {
+      // Set up: feature diverges from main.
+      commit(repo.path, 'base', { 'base.txt': 'base\n' });
+      runGit(repo.path, ['checkout', '-b', 'feature']);
+      commit(repo.path, 'on feature', { 'feature.txt': 'feature\n' });
+      runGit(repo.path, ['checkout', 'main']);
+
+      // Operation under test: merge feature into main with --no-ff (simulating drag-merge).
+      // We are on main (the target branch).
+      await svc.merge('feature', { noFf: true });
+
+      // Assert: main is still current after merge.
+      expect(currentBranch(repo.path)).toBe('main');
+
+      // Assert: HEAD is a merge commit (has 2 parents).
+      const parents = runGit(repo.path, ['log', '-1', '--format=%P']).trim().split(/\s+/).filter(Boolean);
+      expect(parents.length).toBe(2);
+
+      // Assert: "on feature" subject appears in the merged log.
+      const subjects = runGit(repo.path, ['log', '--format=%s']).trim().split('\n');
+      expect(subjects).toContain('on feature');
+    });
+  });
+
   describe('abortOperation (generic)', () => {
     it('aborts a merge in progress', async () => {
       commit(repo.path, 'init', { 'a.txt': 'base\n' });

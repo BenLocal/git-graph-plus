@@ -85,4 +85,18 @@ describe('SquashModal', () => {
     ]);
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('tags the interactiveRebase with squashCount so the host can notify', async () => {
+    const { container } = render(SquashModal, {
+      chain, base: 'r', hasPushedCommits: false, onClose: vi.fn(),
+    });
+    deliverRebaseCommits();
+    await tick();
+
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('button.primary')!);
+
+    const posted = globalThis.__postedMessages.map(m => m.data) as Array<{ type: string; payload?: any }>;
+    const rebase = posted.find(p => p.type === 'interactiveRebase');
+    expect(rebase!.payload.squashCount).toBe(chain.length);
+  });
 });

@@ -5,6 +5,7 @@ import { GitService, GitError } from '../git/git-service';
 import { formatGitError, isAuthFailure, transportFromRemoteUrl } from '../git/git-error-formatter';
 import { splitUpstreamRef } from '../git/git-parser';
 import { samePath } from '../utils/path';
+import { readTimeoutMs } from '../utils/config';
 import { buildFullGraph } from '../git/git-graph-builder';
 import { compileBranchColorRules, makeBranchColorResolver } from '../git/branch-color-resolver';
 import { resolveGraphColors } from '../git/graph-colors';
@@ -113,6 +114,7 @@ export class MainPanel {
     // prompt as the SCM panel. Once they sign in, the OS credential helper
     // caches it and our retried spawn-based command succeeds.
     svc.setAuthRetryHandler(remote => triggerVSCodeGitAuth(repoPath, remote));
+    svc.setDefaultTimeout(readTimeoutMs());
     return svc;
   }
 
@@ -199,6 +201,9 @@ export class MainPanel {
         }
         if (e.affectsConfiguration('gitGraphPlus.graphColors')) {
           this.post({ type: 'setGraphColors', payload: { colors: this.readGraphColors() } });
+        }
+        if (e.affectsConfiguration('gitGraphPlus.timeout')) {
+          this.gitService.setDefaultTimeout(readTimeoutMs());
         }
       })
     );
@@ -816,6 +821,37 @@ export class MainPanel {
           await this.refreshAll();
           break;
         }
+        case 'dragRebase': {
+          // Drag A onto B = rebase A onto B, leaving A current. Check out the
+          // source directly (not via the checkout message) so no "Checked out"
+          // notification fires — only the rebase result is announced.
+          const dragCurrent = (await this.gitService.branches()).find(b => b.current)?.name;
+          if (dragCurrent !== message.payload.source) {
+            await this.gitService.checkout(message.payload.source);
+          }
+          await this.gitService.rebase(message.payload.target);
+          this.post({ type: 'operationComplete', payload: { operation: 'rebase', success: true } });
+          vscode.window.showInformationMessage(
+            vscode.l10n.t('rebasedBranchOnto', message.payload.source, message.payload.target),
+          );
+          await this.refreshAll();
+          break;
+        }
+        case 'dragMerge': {
+          // Drag A onto B = merge A into B (always --no-ff), leaving B current.
+          // Check out the target directly so no "Checked out" notification fires.
+          const mergeCurrent = (await this.gitService.branches()).find(b => b.current)?.name;
+          if (mergeCurrent !== message.payload.target) {
+            await this.gitService.checkout(message.payload.target);
+          }
+          await this.gitService.merge(message.payload.source, { noFf: true });
+          this.post({ type: 'operationComplete', payload: { operation: 'merge', success: true } });
+          vscode.window.showInformationMessage(
+            vscode.l10n.t('mergedBranchInto', message.payload.source, message.payload.target),
+          );
+          await this.refreshAll();
+          break;
+        }
         case 'abortRebase': {
           await this.gitService.abortRebase();
           this.post({
@@ -843,6 +879,14 @@ export class MainPanel {
         case 'interactiveRebase': {
           await this.gitService.interactiveRebase(message.payload.base, message.payload.todos);
           this.post({ type: 'operationComplete', payload: { operation: 'interactiveRebase', success: true } });
+          // A squash routes through this same backend; surface a dedicated
+          // confirmation, otherwise a generic one so the rebase never completes
+          // silently.
+          if (message.payload.squashCount) {
+            vscode.window.showInformationMessage(vscode.l10n.t('squashed', String(message.payload.squashCount)));
+          } else {
+            vscode.window.showInformationMessage(vscode.l10n.t('interactiveRebaseComplete'));
+          }
           await this.refreshAll();
           break;
         }

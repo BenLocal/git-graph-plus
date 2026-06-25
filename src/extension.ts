@@ -15,6 +15,7 @@ import { StatusBarManager } from './views/status-bar';
 import { RepoDiscoveryService } from './services/repo-discovery';
 import { samePath } from './utils/path';
 import { resolveDefaultWorktreePath } from './utils/worktree-path';
+import { readTimeoutMs } from './utils/config';
 
 /**
  * Resolve the `git.path` setting to an existing executable. The setting may be
@@ -80,6 +81,7 @@ export function activate(context: vscode.ExtensionContext) {
   applyGitPath();
 
   let activeGitService = new GitService(activeRepoPath);
+  activeGitService.setDefaultTimeout(readTimeoutMs());
 
   // Inject VS Code's built-in git extension askpass env so authentication prompts work
   const builtinGit = vscode.extensions.getExtension('vscode.git');
@@ -106,6 +108,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('git.path')) applyGitPath();
+      if (e.affectsConfiguration('gitGraphPlus.timeout')) activeGitService.setDefaultTimeout(readTimeoutMs());
     }),
   );
 
@@ -176,6 +179,7 @@ export function activate(context: vscode.ExtensionContext) {
       const firstRepo = repos[0].path;
       activeRepoPath = firstRepo;
       activeGitService = new GitService(activeRepoPath);
+      activeGitService.setDefaultTimeout(readTimeoutMs());
 
       // Re-inject environment if needed
       if (builtinGit && builtinGit.exports) {
@@ -274,6 +278,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (samePath(newPath, activeRepoPath)) { return; }
     activeRepoPath = newPath;
     activeGitService = new GitService(newPath);
+    activeGitService.setDefaultTimeout(readTimeoutMs());
 
     if (builtinGit) {
       const ext = builtinGit.exports;

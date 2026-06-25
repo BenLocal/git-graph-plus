@@ -2,7 +2,7 @@
   "name": "git-graph-plus",
   "displayName": "Git Graph Plus",
   "description": "A modern, full-featured Git GUI for VS Code",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "publisher": "the0807",
   "repository": {
     "type": "git",
@@ -390,6 +390,12 @@
           ],
           "default": "auto",
           "description": "UI language (auto = follow VS Code language setting)"
+        },
+        "gitGraphPlus.timeout": {
+          "type": "integer",
+          "default": 60,
+          "minimum": 1,
+          "markdownDescription": "Maximum time (in seconds) to wait for a Git command before it is aborted. Increase this if the graph times out while loading in a very large repository."
         },
         "gitGraphPlus.graphSortOrder": {
           "type": "string",
