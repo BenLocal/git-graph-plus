@@ -25,6 +25,7 @@
   import { tooltip } from '../../lib/actions/tooltip';
   import { getSquashChain } from '../../lib/utils/squash';
   import { resolveDrop, dragRebaseMessage, dragMergeMessage } from '../../lib/utils/dragDrop';
+  import { computeNavigationTarget, computeScrollTop, computeJumpTarget, type ScrollAlign } from '../../lib/graph-navigation';
 
 
   /**
@@ -308,6 +309,9 @@
 
 
   const ROW_HEIGHT = 30;
+  // Rows of breathing room kept between the selection and the viewport edge when
+  // stepping with the arrow keys, so context above/below the selection stays visible.
+  const KEYBOARD_NAV_SCROLL_MARGIN_ROWS = 3;
   // SourceGit uses unitWidth=12 for X coordinates, we scale them up for display
   const X_SCALE = 1.05; // multiply SourceGit X coords by this for pixel positions
   const BUFFER_ROWS = 20; // Larger buffer to keep lines visible during scroll
@@ -317,6 +321,9 @@
   // Hovered row hash, so the row and its pinned meta overlay highlight as one row.
   let hoveredHash = $state<string | null>(null);
   let viewportHeight = $state(600);
+  // Trail of commits visited during the current run of Ctrl/Cmd jumps, so reversing
+  // a jump returns to where we came from. Cleared by any non-jump navigation.
+  let navPath = $state<string[]>([]);
   let viewportWidth = $state(800);
 
   // Right-side columns (author + sha + date) and the minimum width we always
@@ -333,19 +340,39 @@
     Math.max(120, viewportWidth - RIGHT_COLS_WIDTH - MIN_MESSAGE_WIDTH)
   );
 
+  // Bring a row into view when it is off-screen. 'edge' (keyboard stepping)
+  // scrolls the minimum amount so the view follows the selection one row at a
+  // time; 'center' (search) centers a distant result.
+  function scrollHashIntoView(hash: string, align: ScrollAlign) {
+    if (!container) return;
+    const idx = displayCommits.findIndex(c => c.hash === hash);
+    if (idx === -1) return;
+    // Keep a few rows of breathing room around the selection when stepping.
+    const marginRows = align === 'edge' ? KEYBOARD_NAV_SCROLL_MARGIN_ROWS : 0;
+    const next = computeScrollTop(idx, ROW_HEIGHT, container.scrollTop, viewportHeight, align, marginRows);
+    if (next !== null) container.scrollTop = next;
+  }
+
   // Scroll to search result when navigating
   $effect(() => {
     if (searchNavigateHash && container) {
-      const idx = displayCommits.findIndex(c => c.hash === searchNavigateHash);
-      if (idx !== -1) {
-        const targetY = idx * ROW_HEIGHT;
-        const visibleTop = container.scrollTop;
-        const visibleBottom = visibleTop + viewportHeight;
-        if (targetY < visibleTop || targetY + ROW_HEIGHT > visibleBottom) {
-          container.scrollTop = targetY - viewportHeight / 2 + ROW_HEIGHT / 2;
-        }
-      }
+      navPath = [];
+      scrollHashIntoView(searchNavigateHash, 'center');
     }
+  });
+
+  // A reload or repo switch replaces the commit set; drop the jump path so it can't
+  // reference commits that are no longer present.
+  $effect(() => {
+    commitStore.commits;
+    uiStore.activeRepo;
+    navPath = [];
+  });
+
+  // Clearing the selection (e.g. Esc deselects the commit and closes the bottom
+  // panel) ends the current jump exploration, so drop the path too.
+  $effect(() => {
+    if (uiStore.selectedCommitHash === null) navPath = [];
   });
 
   let totalHeight = $derived(displayCommits.length * ROW_HEIGHT);
@@ -561,6 +588,7 @@
   }
 
   function selectCommit(hash: string) {
+    navPath = [];
     uiStore.selectSingle(hash);
   }
 
@@ -1028,11 +1056,22 @@
     return `${year}-${month}-${day} ${ampm} ${h12}:${mins}`;
   }
 
+  // Keep the viewport size in sync with the actual container. Its height changes
+  // when the bottom panel opens/closes or is resized, which fires no window
+  // resize — without this, scroll-into-view would compute against a stale height
+  // and could leave the selected row hidden behind the bottom panel.
   $effect(() => {
-    if (container) {
-      viewportHeight = container.clientHeight;
-      viewportWidth = container.clientWidth;
-    }
+    if (!container) return;
+    const el = container;
+    const sync = () => {
+      viewportHeight = el.clientHeight;
+      viewportWidth = el.clientWidth;
+    };
+    sync();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
   });
 
   // Orchestration: when armed selection changes, request the right compare data.
@@ -1062,6 +1101,38 @@
     }
   });
 
+  function handleGraphNavKey(e: KeyboardEvent) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    // Ignore while a modal is open, a multi-select range is armed, or the user
+    // is typing in an input (e.g. the search box).
+    if (modalStore.anyOpen || uiStore.multiSelectArmed) return;
+    const el = document.activeElement as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' ||
+               el.tagName === 'SELECT' || el.isContentEditable)) return;
+
+    const navCommits = displayCommits.filter(c => c.hash !== 'UNCOMMITTED');
+    const dir = e.key === 'ArrowDown' ? 'down' : 'up';
+    e.preventDefault();
+
+    if (e.ctrlKey || e.metaKey) {
+      const result = computeJumpTarget(navCommits, uiStore.selectedCommitHash, dir, navPath);
+      navPath = result.path;
+      if (result.target) {
+        uiStore.selectSingle(result.target);
+        scrollHashIntoView(result.target, 'edge');
+      }
+      return;
+    }
+
+    // Plain step abandons the jump exploration path.
+    navPath = [];
+    const target = computeNavigationTarget(navCommits, uiStore.selectedCommitHash, dir, false);
+    if (target) {
+      uiStore.selectSingle(target);
+      scrollHashIntoView(target, 'edge');
+    }
+  }
+
 </script>
 
 <svelte:window onresize={handleResize} onkeydown={(e) => {
@@ -1069,6 +1140,8 @@
     if (bisectBadCommit) { bisectBadCommit = null; }
     else if (bisectCulpritHash) { vscode.postMessage({ type: 'bisectReset' }); }
     else if (uiStore.multiSelectArmed) { uiStore.exitMultiSelect(); }
+  } else {
+    handleGraphNavKey(e);
   }
 }} />
 
