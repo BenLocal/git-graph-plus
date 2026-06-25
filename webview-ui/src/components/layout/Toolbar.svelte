@@ -36,6 +36,12 @@
 
   function doFetch() {
     if (branchStore.remotes.length === 0) { showNoRemotesError = true; return; }
+    // A single-remote repo has nothing to choose, so skip the modal and fetch directly.
+    if (branchStore.remotes.length === 1) {
+      uiStore.operating = 'fetch';
+      vscode.postMessage({ type: 'fetch', payload: { remote: branchStore.remotes[0].name, prune: true } });
+      return;
+    }
     modalStore.openFetch(branchStore.remotes[0].name);
   }
 

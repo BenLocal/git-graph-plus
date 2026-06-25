@@ -59,13 +59,34 @@ describe('Toolbar — fetch / pull / push', () => {
     });
   });
 
-  it('fetch button with remotes opens the fetch modal via modalStore', async () => {
-    branchStore.remotes = [{ name: 'origin', fetchUrl: '', pushUrl: '' }];
+  it('fetch button with multiple remotes opens the fetch modal via modalStore', async () => {
+    branchStore.remotes = [
+      { name: 'origin', fetchUrl: '', pushUrl: '' },
+      { name: 'upstream', fetchUrl: '', pushUrl: '' },
+    ];
     const openFetch = vi.spyOn(modalStore, 'openFetch');
     const { container } = render(Toolbar);
     const fetchBtn = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn')[1];
     await fireEvent.click(fetchBtn);
     expect(openFetch).toHaveBeenCalledWith('origin');
+  });
+
+  it('fetch button with a single remote fetches directly without opening the modal', async () => {
+    branchStore.remotes = [{ name: 'origin', fetchUrl: '', pushUrl: '' }];
+    const openFetch = vi.spyOn(modalStore, 'openFetch');
+    const { container } = render(Toolbar);
+    const fetchBtn = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn')[1];
+    globalThis.__postedMessages = [];
+    await fireEvent.click(fetchBtn);
+    expect(openFetch).not.toHaveBeenCalled();
+    const req = globalThis.__postedMessages.find(
+      (m) => (m.data as { type?: string }).type === 'fetch'
+    );
+    expect(req).toBeDefined();
+    expect((req!.data as { payload: { remote: string; prune: boolean } }).payload).toEqual({
+      remote: 'origin', prune: true,
+    });
+    expect(uiStore.operating).toBe('fetch');
   });
 
   it('pull button calls modalStore.openPull', async () => {
