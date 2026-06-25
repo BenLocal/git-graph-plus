@@ -125,6 +125,7 @@ export const en: Record<string, string> = {
   'graph.notPushed': 'Not pushed',
   'graph.remoteOnly': 'Remote only',
   'graph.amendRef': "Amend '{ref}'",
+  'graph.stash': 'Stash Changes',
   'graph.amendCommit': 'Amend Commit',
   'amend.title': 'Amend Last Commit',
   'amend.stagedIncluded': '{count} staged',

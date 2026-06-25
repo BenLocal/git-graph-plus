@@ -125,6 +125,7 @@ export const ko: Record<string, string> = {
   'graph.notPushed': '푸시되지 않음',
   'graph.remoteOnly': '원격에만 존재',
   'graph.amendRef': "'{ref}'을(를) Amend",
+  'graph.stash': '변경 사항 Stash',
   'graph.amendCommit': 'Amend Commit',
   'amend.title': '마지막 커밋 수정 (Amend)',
   'amend.stagedIncluded': '{count}개 스테이징됨',

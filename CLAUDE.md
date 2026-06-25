@@ -43,19 +43,22 @@ npm run package            # vsce package → .vsix file
 
 ### Extension Host (Backend) — `src/`
 - **`extension.ts`** — Entry point. Registers commands, tree views, file watcher, auto-fetch timer.
-- **`git/git-service.ts`** — Core Git operations (wraps `git` CLI via child_process). All git commands go through this.
+- **`git/git-service.ts`** — Core Git operations (wraps `git` CLI via child_process). This is the central hub (~90KB); nearly all git commands go through it.
 - **`git/git-parser.ts`** — Parses raw git output (log, diff, branch list, etc.) into typed structures.
 - **`git/git-graph-builder.ts`** — Builds the visual graph layout (rail assignment, merge lines) from parsed commits.
+- **`git/patch-builder.ts`** — Builds patches for reverse-changes (undo file/hunk/line against working tree) and `.patch` export.
+- **`git/git-error-formatter.ts`** — Normalizes raw git stderr into user-facing error messages.
 - **`git/types.ts`** — Shared TypeScript types for git data structures.
-- **`panels/MainPanel.ts`** — VS Code WebviewPanel host. Handles message routing between the webview and GitService.
+- **`panels/MainPanel.ts`** — VS Code WebviewPanel host. Routes messages between the webview and GitService.
 - **`utils/message-bus.ts`** — Typed message definitions for Extension ↔ Webview communication (discriminated union types).
-- **`services/file-watcher.ts`** — Watches `.git/` directory for changes and triggers auto-refresh.
+- **`services/file-watcher.ts`** — Watches `.git/` directory for changes and triggers auto-refresh (`file-watcher-helpers.ts` resolves git dirs / classifies paths).
 - **`services/repo-discovery.ts`** — Discovers git repos and submodules in the workspace.
+- **`services/avatar-cache.ts`** — Caches Gravatar avatars for commit authors.
 - **`views/`** — TreeDataProviders for the Activity Bar sidebar (branches, remotes, tags, stashes, worktrees).
 
 ### Webview (Frontend) — `webview-ui/`
-- **Svelte 5** with Vite, outputs to `webview-ui/dist/`.
-- **`src/App.svelte`** — Root component; routes between Graph, Log, and Stats views.
+- **Svelte 5** (runes) with Vite, outputs to `webview-ui/dist/`.
+- **`src/App.svelte`** — Root component; routes between Graph, Reflog, and Stats views.
 - **`src/components/graph/`** — CommitGraph, CommitNode, BranchLine — canvas-based graph rendering.
 - **`src/components/commit/`** — CommitDetails panel with diff viewer (uses Shiki for syntax highlighting).
 - **`src/components/modals/`** — Modal dialogs for git operations (create branch, merge, rebase, etc.).
@@ -63,11 +66,14 @@ npm run package            # vsce package → .vsix file
 - **`src/components/common/`** — Shared UI: context menus, search bar, image diff, stats view, bisect banner.
 - **`src/components/rebase/`** — Interactive rebase UI with drag-to-reorder.
 - **`src/lib/stores/`** — Svelte stores for shared state management.
-- **`src/lib/i18n/`** — Frontend internationalization (English/Korean/Chinese Simplified).
+- **`src/lib/actions/`** — Svelte `use:` actions (e.g. drag-to-rebase/merge interactions).
+- **`src/lib/i18n/`** — Frontend internationalization (`en.ts`, `ko.ts`, `zh.ts`).
 - **`src/lib/vscode-api.ts`** — Typed wrapper for `acquireVsCodeApi()` messaging.
 
 ### Extension ↔ Webview Communication
 All communication is via `postMessage` / `onDidReceiveMessage`. Message types are defined in `src/utils/message-bus.ts` (`WebviewMessage` for webview→extension, `ExtensionMessage` for extension→webview). `MainPanel.ts` is the message router that dispatches webview requests to `GitService`.
+
+> ⚠️ Svelte 5 `$state` values are reactive proxies. Passing one directly to `postMessage` throws `DataCloneError` (silently failing). Spread/snapshot the value (`$state.snapshot(...)` or `{ ...value }`) before posting.
 
 ### Internationalization
 - Extension strings: `l10n/bundle.l10n.json` (English), `l10n/bundle.l10n.ko.json` (Korean), `l10n/bundle.l10n.zh-cn.json` (Chinese Simplified), using VS Code's `vscode.l10n.t()`.
@@ -77,6 +83,10 @@ All communication is via `postMessage` / `onDidReceiveMessage`. Message types ar
 ## Key Conventions
 
 - Extension is bundled with **esbuild** (CJS, Node target). Webview is bundled with **Vite** (ESM, browser target).
-- Tests use **Vitest**, split into two projects in `vitest.config.mts`: `backend` (extension-host code, `src/**/*.test.ts`, node env, runs against the real `git` CLI; integration tests in `src/git/__tests__/integration/` spawn real git/git-flow/git-lfs and use a 30s timeout) and `webview` (Svelte components/stores, `webview-ui/src/**/*.test.ts`, happy-dom env). `npm test` runs both. Coverage is uploaded to Codecov; vscode-bound modules (`extension.ts`, `panels/`, canvas/shiki webview code) are excluded from the % — see the comments in `vitest.config.mts`.
-- The extension activates on `onStartupFinished`; on activation it discovers repos in the workspace and is a no-op when none exist.
 - `vscode` is an external dependency (not bundled) — provided by the VS Code runtime.
+- The extension activates on `onStartupFinished`; on activation it discovers repos in the workspace and is a no-op when none exist.
+- Tests use **Vitest**, split into two projects in `vitest.config.mts`:
+  - `backend` — extension-host code (`src/**/*.test.ts`), node env, runs against the **real `git` CLI**. Integration tests in `src/git/__tests__/integration/` spawn real git/git-flow/git-lfs and use a 30s timeout.
+  - `webview` — Svelte components/stores (`webview-ui/src/**/*.test.ts`), happy-dom env.
+  - `npm test` runs both. Coverage is uploaded to Codecov; vscode-bound modules (`extension.ts`, `panels/`, canvas/shiki webview code) are excluded from the % — see the comments in `vitest.config.mts`.
+- Staging, committing, and inline blame are intentionally delegated to VS Code's built-in Source Control; Git Graph+ focuses on everything else.

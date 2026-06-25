@@ -125,6 +125,7 @@ export const zh: Record<string, string> = {
   'graph.notPushed': '未推送',
   'graph.remoteOnly': '仅远程',
   'graph.amendRef': "修正 '{ref}'",
+  'graph.stash': 'Stash 更改',
   'graph.amendCommit': 'Amend Commit',
   'amend.title': '修正上一次提交',
   'amend.stagedIncluded': '已暂存 {count} 个',

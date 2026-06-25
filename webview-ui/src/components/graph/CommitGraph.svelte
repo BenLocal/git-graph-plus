@@ -980,28 +980,40 @@
     contextMenu = { x: e.clientX, y: e.clientY, items };
   }
 
-  // Context menu for the uncommitted-changes row: amend the last commit.
+  // Context menu for the uncommitted-changes row: stash the changes, and amend
+  // the last commit when there is one.
   function onUncommittedContextMenu(e: MouseEvent) {
     e.preventDefault();
+    const items: any[] = [];
+
+    // Stash is always available: the row only renders when there are uncommitted
+    // changes to stash.
+    items.push({
+      label: t('graph.stash'),
+      action: () => {
+        contextMenu = null;
+        modalStore.openStashSave();
+      },
+    });
+
     const headCommit = commitStore.commits.find(c => c.refs.some(r => r.type === 'head'));
-    if (!headCommit) return; // nothing to amend (empty repo / no HEAD loaded)
-    const cur = branchStore.currentBranch;
-    // HEAD is "pushed" when the branch tracks an existing upstream and is not ahead of it.
-    const isPushed = !!cur?.upstream && !cur?.upstreamGone && (cur?.ahead ?? 0) === 0;
-    const fullMessage = headCommit.body ? `${headCommit.subject}\n\n${headCommit.body}` : headCommit.subject;
-    const ref = cur?.name ?? headCommit.abbreviatedHash;
-    contextMenu = {
-      x: e.clientX,
-      y: e.clientY,
-      items: [{
+    if (headCommit) { // amend needs a HEAD commit (skip on empty repo / no HEAD loaded)
+      const cur = branchStore.currentBranch;
+      // HEAD is "pushed" when the branch tracks an existing upstream and is not ahead of it.
+      const isPushed = !!cur?.upstream && !cur?.upstreamGone && (cur?.ahead ?? 0) === 0;
+      const fullMessage = headCommit.body ? `${headCommit.subject}\n\n${headCommit.body}` : headCommit.subject;
+      const ref = cur?.name ?? headCommit.abbreviatedHash;
+      items.push({
         label: t('graph.amendRef', { ref }),
         action: () => {
           contextMenu = null;
           modalStore.openAmend({ hash: headCommit.hash, subject: headCommit.subject, message: fullMessage, isPushed });
           vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
         },
-      }],
-    };
+      });
+    }
+
+    contextMenu = { x: e.clientX, y: e.clientY, items };
   }
 
   function formatDate(dateStr: string): string {
