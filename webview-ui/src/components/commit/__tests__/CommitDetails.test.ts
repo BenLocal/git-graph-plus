@@ -1011,3 +1011,101 @@ describe('CommitDetails — large diff render cap', () => {
     expect(container.querySelector('.diff-truncated-banner')).toBeNull();
   });
 });
+
+describe('CommitDetails — reverse changes (committed view)', () => {
+  // A small modified-file diff: context (idx 0), delete (idx 1), add (idx 2).
+  // FileDiffView renders one .diff-line per entry; gutters share those indices.
+  function reversibleDiff(): DiffData {
+    return {
+      file: 'src/a.ts', isBinary: false, isImage: false,
+      hunks: [{ header: '', oldStart: 1, oldLines: 2, newStart: 1, newLines: 2, lines: [
+        { type: 'context', content: 'ctx', oldLineNumber: 1, newLineNumber: 1 },
+        { type: 'delete', content: 'old', oldLineNumber: 2 },
+        { type: 'add', content: 'new', newLineNumber: 2 },
+      ] }],
+    };
+  }
+
+  // Mount into the committed single-file view (canReverseInThisView === true) and
+  // render the embedded FileDiffView so its reverse affordances are wired to the
+  // CommitDetails handlers under test.
+  async function setupReversible() {
+    const r = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
+    const changesTab = Array.from(r.container.querySelectorAll<HTMLButtonElement>('.top-tab'))
+      .find(t => /change/i.test(t.textContent ?? ''))!;
+    await fireEvent.click(changesTab);
+    await waitFor(() => r.container.querySelector('.file-item'));
+    await fireEvent.click(r.container.querySelector<HTMLButtonElement>('.file-item')!);
+    deliverFileDiff('h1', 'src/a.ts', reversibleDiff());
+    await waitFor(() => r.container.querySelector('.diff-content .diff-line'));
+    globalThis.__postedMessages = [];
+    return r;
+  }
+
+  function rightClick(el: Element) {
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 20 }));
+  }
+
+  function lastReverse() {
+    return globalThis.__postedMessages
+      .map(m => m.data as { type?: string; payload?: { commit: string; file: string; hunkIndex?: number; lineIndices?: number[] } })
+      .filter(m => m.type === 'reverseCommitChanges')
+      .pop();
+  }
+
+  it('per-hunk reverse button posts reverseCommitChanges for the whole hunk', async () => {
+    const { container } = await setupReversible();
+    const btn = container.querySelector<HTMLButtonElement>('.hunk-hunk-btn');
+    expect(btn).not.toBeNull();
+    await fireEvent.click(btn!);
+    const msg = lastReverse();
+    expect(msg).toBeDefined();
+    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0 });
+    expect(msg!.payload!.lineIndices).toBeUndefined();
+  });
+
+  it('right-click → "Reverse Hunk" menu item reverses the whole hunk', async () => {
+    const { container } = await setupReversible();
+    rightClick(container.querySelectorAll('.diff-content .diff-line')[1]);
+    await waitFor(() => container.querySelector('.context-menu'));
+    const item = Array.from(container.querySelectorAll<HTMLButtonElement>('.context-menu .menu-item'))
+      .find(b => b.textContent?.trim() === 'Reverse Hunk')!;
+    expect(item).toBeDefined();
+    await fireEvent.click(item);
+    const msg = lastReverse();
+    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0 });
+    expect(msg!.payload!.lineIndices).toBeUndefined();
+    // The menu closes after the action.
+    await waitFor(() => expect(container.querySelector('.context-menu')).toBeNull());
+  });
+
+  it('selected-lines reverse button reverses just the dragged changed lines', async () => {
+    const { container } = await setupReversible();
+    const g = container.querySelectorAll('.diff-content .diff-line .line-gutter');
+    await fireEvent.mouseDown(g[1]);
+    await fireEvent.mouseEnter(g[2]);
+    await fireEvent.mouseUp(window);
+    const btn = container.querySelector<HTMLButtonElement>('.hunk-lines-btn');
+    expect(btn).not.toBeNull();
+    await fireEvent.click(btn!);
+    const msg = lastReverse();
+    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0, lineIndices: [1, 2] });
+  });
+
+  it('right-click on a selection → "Reverse Selected Lines" reverses those lines', async () => {
+    const { container } = await setupReversible();
+    const g = container.querySelectorAll('.diff-content .diff-line .line-gutter');
+    await fireEvent.mouseDown(g[1]);
+    await fireEvent.mouseEnter(g[2]);
+    await fireEvent.mouseUp(window);
+    rightClick(container.querySelectorAll('.diff-content .diff-line')[2]);
+    await waitFor(() => container.querySelector('.context-menu'));
+    const item = Array.from(container.querySelectorAll<HTMLButtonElement>('.context-menu .menu-item'))
+      .find(b => /Reverse Selected Lines/.test(b.textContent ?? ''))!;
+    expect(item).toBeDefined();
+    await fireEvent.click(item);
+    const msg = lastReverse();
+    expect(msg!.payload).toMatchObject({ commit: 'h1', file: 'src/a.ts', hunkIndex: 0, lineIndices: [1, 2] });
+  });
+});
