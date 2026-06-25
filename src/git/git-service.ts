@@ -1093,63 +1093,57 @@ export class GitService {
       return this.showStashDiff(hash, stashParents, file);
     }
 
-    const parents = await this.commitParents(hash);
+    if (file) {
+      return (await this.commitFileDiff(hash, file)).parsed;
+    }
 
+    // Overview (no specific file).
+    const parents = await this.commitParents(hash);
     if (parents.length === 0) {
       // Root commit: diff against empty tree.
-      const args = ['show', '--no-color', '--format=', hash];
-      if (file) args.push('--', file);
-      const raw = await this.exec(args);
-      return parseDiff(raw);
+      return parseDiff(await this.exec(['show', '--no-color', '--format=', hash]));
     }
-
-    if (parents.length > 1 && file) {
-      // Octopus / regular merge with a specific file: find the first parent
-      // whose diff for this file is non-empty. The first-parent-only default
-      // hides changes that came in from parent 2..N.
-      for (const parent of parents) {
-        this.assertSafeRef(parent, 'diff');
-        const raw = await this.exec(['diff', '--no-color', `${parent}..${hash}`, '--', file]);
-        const parsed = parseDiff(raw);
-        if (parsed.length > 0 && parsed[0].hunks.length > 0) {
-          return parsed;
-        }
-      }
-      return [];
-    }
-
-    // Single-parent commit, or merge overview without a specific file.
-    const args = ['diff', '--no-color', `${hash}^..${hash}`];
-    if (file) args.push('--', file);
-    const raw = await this.exec(args);
-    return parseDiff(raw);
+    // Single-parent commit, or merge overview (first-parent diff).
+    return parseDiff(await this.exec(['diff', '--no-color', `${hash}^..${hash}`]));
   }
 
-  /** Raw unified diff for one file in a commit, against the appropriate parent.
-   *  Mirrors showCommitDiff's parent selection so the patch we reverse matches
-   *  exactly what the user is looking at. */
-  private async rawCommitFileDiff(hash: string, file: string): Promise<string> {
+  /**
+   * Diff for a single file in a commit, against the appropriate parent, returned
+   * as both the raw unified text and its parsed form. Centralising the parent
+   * selection here guarantees the displayed diff ({@link showCommitDiff}) and the
+   * patch we reverse ({@link reverseCommitChanges}) can never pick different
+   * parents — see the merge-commit case below.
+   */
+  private async commitFileDiff(hash: string, file: string): Promise<{ raw: string; parsed: DiffData[] }> {
     this.assertSafeRef(hash, 'diff');
     this.assertSafePath(file, 'diff');
     const parents = await this.commitParents(hash);
 
     if (parents.length === 0) {
       // Root commit: diff against the empty tree.
-      return this.exec(['show', '--no-color', '--format=', hash, '--', file]);
+      const raw = await this.exec(['show', '--no-color', '--format=', hash, '--', file]);
+      return { raw, parsed: parseDiff(raw) };
     }
 
     if (parents.length > 1) {
-      // Merge: use the first parent whose diff for this file is non-empty,
-      // matching showCommitDiff (first-parent-only would hide later parents).
+      // Octopus / regular merge: find the first parent whose diff for this file
+      // carries real content hunks. The first-parent-only default hides changes
+      // that came in from parent 2..N. We test on parsed hunks (not raw
+      // non-emptiness) so a mode-only / rename-only diff from an earlier parent
+      // doesn't shadow the later parent that actually holds the content.
       for (const parent of parents) {
         this.assertSafeRef(parent, 'diff');
         const raw = await this.exec(['diff', '--no-color', `${parent}..${hash}`, '--', file]);
-        if (raw.trim()) { return raw; }
+        const parsed = parseDiff(raw);
+        if (parsed.length > 0 && parsed[0].hunks.length > 0) {
+          return { raw, parsed };
+        }
       }
-      return '';
+      return { raw: '', parsed: [] };
     }
 
-    return this.exec(['diff', '--no-color', `${hash}^..${hash}`, '--', file]);
+    const raw = await this.exec(['diff', '--no-color', `${hash}^..${hash}`, '--', file]);
+    return { raw, parsed: parseDiff(raw) };
   }
 
   /**
@@ -1170,7 +1164,7 @@ export class GitService {
     this.assertSafeRef(hash, 'apply');
     this.assertSafePath(file, 'apply');
 
-    const raw = await this.rawCommitFileDiff(hash, file);
+    const { raw } = await this.commitFileDiff(hash, file);
     if (!raw.trim()) {
       throw new GitError(`No changes to reverse for ${file} in ${hash.substring(0, 7)}`, null, []);
     }

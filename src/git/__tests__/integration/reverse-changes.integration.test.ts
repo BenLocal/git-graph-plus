@@ -222,6 +222,45 @@ describe('GitService integration — reverseCommitChanges on a merge commit', ()
     // side.txt is unchanged everywhere, so every parent diff is empty.
     await expect(svc.reverseCommitChanges(mergeHash, 'side.txt')).rejects.toThrow(/No changes to reverse/);
   });
+
+  // Regression: parent selection must agree between the displayed diff and the
+  // reversed patch. The first parent's diff for m.txt is mode-only (non-empty
+  // raw, but ZERO hunks); the second parent's carries the real content hunk.
+  // Selecting on raw-non-emptiness would pick parent 1 and reverse the wrong
+  // (mode) change / throw "Hunk 0 not found"; selecting on parsed hunks (as
+  // showCommitDiff does) picks parent 2 — both paths must land on parent 2.
+  function buildHunklessFirstParentMerge(): string {
+    commit(repo.path, 'base', { 'm.txt': 'x\n' });
+    runGit(repo.path, ['checkout', '-b', 'feature']);
+    commit(repo.path, 'feature content', { 'm.txt': 'y\n' }); // real content change
+    runGit(repo.path, ['checkout', 'main']); // main stays at base for m.txt
+    runGit(repo.path, ['merge', '--no-ff', '--no-commit', 'feature']);
+    // Resolve to base's CONTENT but flip the executable bit, so vs parent 1
+    // (main = base) only the mode differs, while vs parent 2 (feature) the
+    // content differs. update-index sets the recorded mode regardless of
+    // core.fileMode, keeping the diff deterministic.
+    writeFile(repo.path, 'm.txt', 'x\n');
+    runGit(repo.path, ['add', '-A']);
+    runGit(repo.path, ['update-index', '--chmod=+x', 'm.txt']);
+    runGit(repo.path, ['commit', '--no-edit']);
+    return head(repo.path);
+  }
+
+  it('reverses against the same parent the UI shows when an earlier parent is hunkless', async () => {
+    const mergeHash = buildHunklessFirstParentMerge();
+
+    // The displayed diff comes from parent 2 (the content-bearing parent).
+    const diff = await svc.showCommitDiff(mergeHash, 'm.txt');
+    expect(diff[0].hunks.length).toBeGreaterThan(0);
+    const hunk = diff[0].hunks[0];
+    expect(hunk.lines.some((l) => l.type === 'delete' && l.content === 'y')).toBe(true);
+    expect(hunk.lines.some((l) => l.type === 'add' && l.content === 'x')).toBe(true);
+
+    // Reversing hunk 0 must use that SAME parent — restoring feature's content.
+    // Against the hunkless first parent this would throw "Hunk 0 not found".
+    await svc.reverseCommitChanges(mergeHash, 'm.txt', { hunkIndex: 0 });
+    expect(read(repo, 'm.txt')).toBe('y\n');
+  });
 });
 
 // Files WITHOUT a trailing newline exercise the "\ No newline at end of file"
