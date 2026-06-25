@@ -874,6 +874,11 @@
     padding: 0 10px;
     font-family: var(--vscode-editor-font-family, monospace);
     color: var(--text-secondary);
+    /* Large repos abbreviate hashes to 10-12 chars; clip so they never spill
+       into the date column. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .reflog-header .col-hash {
