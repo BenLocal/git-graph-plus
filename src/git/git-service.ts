@@ -14,6 +14,7 @@ import { resolveGitDirs } from '../services/file-watcher-helpers';
  *  extension host. Callers can override per-invocation via `maxBufferBytes`. */
 const DEFAULT_MAX_BUFFER_BYTES = 256 * 1024 * 1024;
 import { parseLog, parseBranches, parseTags, parseRemotes, parseStashList, parseDiff, parseWorktreeList, parseLfsFiles, parseLfsLocks, mapSignatureStatus } from './git-parser';
+import { buildReversePatch } from './patch-builder';
 import type { Commit, BranchInfo, TagInfo, RemoteInfo, StashEntry, LogOptions, DiffData, WorktreeInfo, CommitSignature } from './types';
 
 export class GitError extends Error {
@@ -1092,36 +1093,89 @@ export class GitService {
       return this.showStashDiff(hash, stashParents, file);
     }
 
+    if (file) {
+      return (await this.commitFileDiff(hash, file)).parsed;
+    }
+
+    // Overview (no specific file).
+    const parents = await this.commitParents(hash);
+    if (parents.length === 0) {
+      // Root commit: diff against empty tree.
+      return parseDiff(await this.exec(['show', '--no-color', '--format=', hash]));
+    }
+    // Single-parent commit, or merge overview (first-parent diff).
+    return parseDiff(await this.exec(['diff', '--no-color', `${hash}^..${hash}`]));
+  }
+
+  /**
+   * Diff for a single file in a commit, against the appropriate parent, returned
+   * as both the raw unified text and its parsed form. Centralising the parent
+   * selection here guarantees the displayed diff ({@link showCommitDiff}) and the
+   * patch we reverse ({@link reverseCommitChanges}) can never pick different
+   * parents — see the merge-commit case below.
+   */
+  private async commitFileDiff(hash: string, file: string): Promise<{ raw: string; parsed: DiffData[] }> {
+    this.assertSafeRef(hash, 'diff');
+    this.assertSafePath(file, 'diff');
     const parents = await this.commitParents(hash);
 
     if (parents.length === 0) {
-      // Root commit: diff against empty tree.
-      const args = ['show', '--no-color', '--format=', hash];
-      if (file) args.push('--', file);
-      const raw = await this.exec(args);
-      return parseDiff(raw);
+      // Root commit: diff against the empty tree.
+      const raw = await this.exec(['show', '--no-color', '--format=', hash, '--', file]);
+      return { raw, parsed: parseDiff(raw) };
     }
 
-    if (parents.length > 1 && file) {
-      // Octopus / regular merge with a specific file: find the first parent
-      // whose diff for this file is non-empty. The first-parent-only default
-      // hides changes that came in from parent 2..N.
+    if (parents.length > 1) {
+      // Octopus / regular merge: find the first parent whose diff for this file
+      // carries real content hunks. The first-parent-only default hides changes
+      // that came in from parent 2..N. We test on parsed hunks (not raw
+      // non-emptiness) so a mode-only / rename-only diff from an earlier parent
+      // doesn't shadow the later parent that actually holds the content.
       for (const parent of parents) {
         this.assertSafeRef(parent, 'diff');
         const raw = await this.exec(['diff', '--no-color', `${parent}..${hash}`, '--', file]);
         const parsed = parseDiff(raw);
         if (parsed.length > 0 && parsed[0].hunks.length > 0) {
-          return parsed;
+          return { raw, parsed };
         }
       }
-      return [];
+      return { raw: '', parsed: [] };
     }
 
-    // Single-parent commit, or merge overview without a specific file.
-    const args = ['diff', '--no-color', `${hash}^..${hash}`];
-    if (file) args.push('--', file);
-    const raw = await this.exec(args);
-    return parseDiff(raw);
+    const raw = await this.exec(['diff', '--no-color', `${hash}^..${hash}`, '--', file]);
+    return { raw, parsed: parseDiff(raw) };
+  }
+
+  /**
+   * Reverse-apply (undo) a commit's change to one file in the working tree.
+   * With no selection, undoes the whole file's change; with a hunk index,
+   * undoes that hunk; with line indices, undoes just those changed lines.
+   * The result lands in the working tree (unstaged) so the user can review it.
+   *
+   * `hunkIndex`/`lineIndices` index the diff the way the webview rendered it
+   * (see patch-builder / git-parser). Throws if there is nothing to reverse or
+   * the patch doesn't apply cleanly (e.g. the working tree has diverged).
+   */
+  async reverseCommitChanges(
+    hash: string,
+    file: string,
+    selection?: { hunkIndex?: number; lineIndices?: number[] },
+  ): Promise<void> {
+    this.assertSafeRef(hash, 'apply');
+    this.assertSafePath(file, 'apply');
+
+    const { raw } = await this.commitFileDiff(hash, file);
+    if (!raw.trim()) {
+      throw new GitError(`No changes to reverse for ${file} in ${hash.substring(0, 7)}`, null, []);
+    }
+
+    const patch = selection && selection.hunkIndex !== undefined
+      ? buildReversePatch(raw, selection.hunkIndex, selection.lineIndices)
+      : raw;
+
+    // --recount lets git fix up the line counts of our reconstructed hunks;
+    // applying without --cached touches only the working tree.
+    await this.exec(['apply', '--reverse', '--recount'], { stdin: patch });
   }
 
   /**

@@ -53,6 +53,7 @@ export type WebviewMessage =
   | { type: 'stashApply'; payload: { index: number; drop?: boolean } }
   | { type: 'cherryPick'; payload: { commit: string; commits?: string[]; noCommit?: boolean; pushAfter?: boolean } }
   | { type: 'revert'; payload: { commit: string; noCommit?: boolean; pushAfter?: boolean } }
+  | { type: 'reverseCommitChanges'; payload: { commit: string; file: string; hunkIndex?: number; lineIndices?: number[] } }
   | { type: 'dragRebase'; payload: { source: string; target: string } }
   | { type: 'dragMerge'; payload: { source: string; target: string } }
   | { type: 'addRemote'; payload: { name: string; url: string } }
