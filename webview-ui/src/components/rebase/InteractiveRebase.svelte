@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import { getVsCodeApi } from '../../lib/vscode-api';
   import { t } from '../../lib/i18n/index.svelte';
   import type { Commit } from '../../lib/types';
   import Modal from '../common/Modal.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
+  import { applyAutosquash, hasAutosquashTargets } from '../../lib/autosquash';
 
   interface Props {
     base: string;
@@ -49,6 +50,20 @@
   );
 
   const hasChanges = $derived(todos.some(t => t.action !== 'pick') || orderChanged);
+
+  // Original, freshly-loaded todo list (all `pick`, source order). Kept so the
+  // autosquash toggle can restore it without re-fetching.
+  let originalTodos = $state<TodoEntry[]>([]);
+  let autosquashOn = $state(false);
+  const canAutosquash = $derived(hasAutosquashTargets(originalTodos));
+
+  // Rebuild the rendered list from the untouched `originalTodos` snapshot.
+  function rebuildTodos(on: boolean) {
+    autosquashOn = on;
+    todos = on
+      ? (applyAutosquash(originalTodos) as TodoEntry[])
+      : originalTodos.map(t => ({ ...t }));
+  }
 
   const squashGroups = $derived(todos.map((todo, i) => {
     const isSquashLike = (entry?: TodoEntry) => entry?.action === 'squash' || entry?.action === 'fixup';
@@ -104,47 +119,62 @@
   const groupPrints = $state<Record<number, string>>({});
 
   $effect.pre(() => {
-    let i = 0;
-    while (i < todos.length) {
-      const todo = todos[i];
-      const role = squashGroups[i];
-      if (role === 'squash-target') {
-        const fp = squashFingerprint(i);
-        if (groupPrints[i] !== fp) {
-          // Group composition changed — reset to new combined message
-          groupPrints[i] = fp;
-          todos[i].newMessage = squashGroupMessage(i);
-        } else if (todo.newMessage === undefined) {
-          // First time — initialize
-          todos[i].newMessage = squashGroupMessage(i);
-        }
-        // Clear message on squash members
-        i++;
-        while (i < todos.length && (todos[i].action === 'squash' || todos[i].action === 'fixup')) {
-          todos[i].newMessage = undefined;
+    // Re-run when the list shape changes…
+    void todos;
+    void squashGroups;
+    // …but don't track the writes below, or mutating todos[i].newMessage here
+    // would re-trigger this same effect (read→write→read) and, when the whole
+    // list is replaced on an autosquash toggle, spin into an update-depth loop
+    // that wedges the component (only native controls keep working).
+    untrack(() => {
+      let i = 0;
+      while (i < todos.length) {
+        const todo = todos[i];
+        const role = squashGroups[i];
+        if (role === 'squash-target') {
+          const fp = squashFingerprint(i);
+          if (groupPrints[i] !== fp) {
+            // Group composition changed — reset to new combined message
+            groupPrints[i] = fp;
+            todos[i].newMessage = squashGroupMessage(i);
+          } else if (todo.newMessage === undefined) {
+            // First time — initialize
+            todos[i].newMessage = squashGroupMessage(i);
+          }
+          // Clear message on squash members
           i++;
+          while (i < todos.length && (todos[i].action === 'squash' || todos[i].action === 'fixup')) {
+            todos[i].newMessage = undefined;
+            i++;
+          }
+          continue;
         }
-        continue;
+        if (todo.action !== 'reword' && todo.newMessage !== undefined) {
+          todos[i].newMessage = undefined;
+        }
+        i++;
       }
-      if (todo.action !== 'reword' && todo.newMessage !== undefined) {
-        todos[i].newMessage = undefined;
-      }
-      i++;
-    }
+    });
   });
 
   onMount(() => {
     function handleMessage(event: MessageEvent) {
       const msg = event.data;
       if (msg.type === 'rebaseCommitsData') {
-        todos = msg.payload.commits.map((c: Commit) => ({
+        const picks: TodoEntry[] = msg.payload.commits.map((c: Commit) => ({
           action: 'pick' as const,
           hash: c.hash,
           subject: c.subject,
           body: c.body,
         }));
         initialOrder = msg.payload.commits.map((c: Commit) => c.hash);
+        // Snapshot for autosquash input / source-order restore (never rendered,
+        // never mutated).
+        originalTodos = picks;
         loading = false;
+        // Autosquash is on by default when fixup!/squash! commits are present;
+        // the modal is a preview, so nothing is applied until "Start Rebase".
+        rebuildTodos(hasAutosquashTargets(picks));
       }
     }
     window.addEventListener('message', handleMessage);
@@ -248,6 +278,24 @@
       <span class="rebase-count">{todos.length} commit{todos.length > 1 ? 's' : ''}</span>
       <span class="rebase-hint">{t('rebase.instructions')}</span>
     </div>
+
+    {#if canAutosquash}
+      <label class="autosquash-row">
+        <span class="autosquash-switch">
+          <input
+            type="checkbox"
+            role="switch"
+            bind:checked={autosquashOn}
+            oninput={(e) => rebuildTodos(e.currentTarget.checked)}
+          />
+          <span class="autosquash-slider"></span>
+        </span>
+        <span class="autosquash-text">
+          <span class="autosquash-label">{t('rebase.autosquash')}</span>
+          <span class="autosquash-desc">{t('rebase.autosquashHint')}</span>
+        </span>
+      </label>
+    {/if}
 
     <div class="todo-list" class:drag-active={dragIndex !== null} role="list">
       {#each todos as todo, index (todo.hash)}
@@ -388,6 +436,92 @@
   .rebase-hint {
     font-size: 11px;
     color: var(--text-secondary);
+  }
+
+  .autosquash-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .autosquash-text {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+
+  .autosquash-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .autosquash-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  /* Sliding on/off switch: hidden checkbox + a slider span (pseudo-elements
+     don't render on <input>, so the thumb lives on the span). */
+  .autosquash-switch {
+    position: relative;
+    display: inline-block;
+    flex-shrink: 0;
+    width: 30px;
+    height: 16px;
+  }
+
+  .autosquash-switch input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 1;
+  }
+
+  .autosquash-slider {
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background: var(--border-color);
+    transition: background 0.15s ease;
+    pointer-events: none;
+  }
+
+  .autosquash-slider::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.15s ease;
+  }
+
+  .autosquash-switch input:checked + .autosquash-slider {
+    background: var(--vscode-button-background, #0e639c);
+  }
+
+  .autosquash-switch input:checked + .autosquash-slider::after {
+    transform: translateX(14px);
+  }
+
+  .autosquash-switch input:focus-visible + .autosquash-slider {
+    outline: 1px solid var(--vscode-focusBorder, #007fd4);
+    outline-offset: 1px;
   }
 
   .todo-list {
@@ -604,9 +738,12 @@
   .todo-message-input {
     flex: 1;
     min-width: 0;
-    min-height: 28px;
+    /* autoresize sets an inline height from scrollHeight; a tall min-height
+       would override it and leave a single line top-aligned in the box.
+       Keep min-height in step with the one-line content + vertical padding. */
+    min-height: 24px;
     max-height: 160px;
-    padding: 2px 6px;
+    padding: 4px 6px;
     background: var(--vscode-input-background, var(--bg-secondary));
     border: 1px solid var(--vscode-input-border, var(--border-color));
     border-radius: 3px;

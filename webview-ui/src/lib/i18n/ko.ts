@@ -217,7 +217,8 @@ export const ko: Record<string, string> = {
   'rebase.moveUp': '위로 이동',
   'rebase.moveDown': '아래로 이동',
   'rebase.cannotSquashFirst': '가장 오래된 commit은 squash/fixup할 수 없습니다',
-
+  'rebase.autosquash': 'Autosquash',
+  'rebase.autosquashHint': 'fixup!/squash! 커밋을 대상 커밋 아래로 자동 배치',
   // Multi-select (squash / cherry-pick selected commits)
   'graph.squashCommits': 'Commit {count}개 Squash',
   'graph.cherryPickCommits': 'Commit {count}개 Cherry-pick',

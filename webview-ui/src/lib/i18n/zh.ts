@@ -217,7 +217,8 @@ export const zh: Record<string, string> = {
   'rebase.moveUp': '上移',
   'rebase.moveDown': '下移',
   'rebase.cannotSquashFirst': '无法对最早的提交执行 squash/fixup',
-
+  'rebase.autosquash': 'Autosquash',
+  'rebase.autosquashHint': '将 fixup!/squash! 提交自动排列到目标提交下方',
   // Multi-select (squash / cherry-pick selected commits)
   'graph.squashCommits': 'Squash {count} 个提交',
   'graph.cherryPickCommits': 'Cherry-pick {count} 个提交',

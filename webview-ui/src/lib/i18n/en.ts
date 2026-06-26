@@ -217,7 +217,8 @@ export const en: Record<string, string> = {
   'rebase.moveUp': 'Move up',
   'rebase.moveDown': 'Move down',
   'rebase.cannotSquashFirst': 'Cannot squash/fixup the oldest commit',
-
+  'rebase.autosquash': 'Autosquash',
+  'rebase.autosquashHint': 'Arrange fixup!/squash! commits under their targets',
   // Multi-select (squash / cherry-pick selected commits)
   'graph.squashCommits': 'Squash {count} commits',
   'graph.cherryPickCommits': 'Cherry-pick {count} commits',

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, fireEvent, waitFor } from '@testing-library/svelte';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, fireEvent, waitFor, cleanup } from '@testing-library/svelte';
 import InteractiveRebase from '../InteractiveRebase.svelte';
 import { i18n } from '../../../lib/i18n/index.svelte';
 import type { Commit } from '../../../lib/types';
@@ -35,6 +35,10 @@ beforeEach(() => {
   i18n.setLocale('en');
   globalThis.__postedMessages = [];
 });
+
+// Unmount between tests so a prior modal's window 'message' listener doesn't
+// also handle the next test's deliverCommits (which corrupts shared state).
+afterEach(() => cleanup());
 
 describe('InteractiveRebase — initial flow', () => {
   it('requests rebase commits on mount with the base', () => {
@@ -329,5 +333,87 @@ describe('InteractiveRebase — reordering', () => {
     await waitFor(() => {
       expect(container.querySelector('.action-dropdown')).toBeNull();
     });
+  });
+});
+
+describe('InteractiveRebase — autosquash', () => {
+  it('auto-arranges fixup! commits under their target on load (toggle on)', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'Add feature' }),
+      commit({ hash: 'c2', subject: 'Unrelated work' }),
+      commit({ hash: 'c3', subject: 'fixup! Add feature' }),
+    ]);
+    await waitFor(() => {
+      // No click needed — the fixup! (c3) is arranged right under its target.
+      const order = [...container.querySelectorAll('.todo-hash')].map(n => n.textContent);
+      expect(order).toEqual(['c1', 'c3', 'c2']);
+      const badges = [...container.querySelectorAll('.action-badge')].map(b => b.textContent?.toLowerCase());
+      expect(badges[1]).toContain('fixup');
+    });
+    expect(container.querySelector<HTMLInputElement>('.autosquash-switch input')!.checked).toBe(true);
+  });
+
+  it('restores the original order when the autosquash toggle is turned off', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'Add feature' }),
+      commit({ hash: 'c2', subject: 'Unrelated work' }),
+      commit({ hash: 'c3', subject: 'fixup! Add feature' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+
+    await fireEvent.click(container.querySelector<HTMLInputElement>('.autosquash-switch input')!);
+
+    await waitFor(() => {
+      const order = [...container.querySelectorAll('.todo-hash')].map(n => n.textContent);
+      expect(order).toEqual(['c1', 'c2', 'c3']);
+      const badges = [...container.querySelectorAll('.action-badge')].map(b => b.textContent?.toLowerCase());
+      expect(badges.every(b => b?.includes('pick'))).toBe(true);
+    });
+  });
+
+  it('keeps reordering on every toggle and leaves other controls responsive', async () => {
+    // Regression: the squash-message effect read & wrote `todos`, so replacing
+    // the list on each toggle spun into an update-depth loop that froze the
+    // component — the toggle (a native checkbox) kept flipping while every
+    // Svelte-handled button went dead. Toggle several times, then confirm a
+    // move button still reorders.
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'Add feature' }),
+      commit({ hash: 'c2', subject: 'Unrelated work' }),
+      commit({ hash: 'c3', subject: 'fixup! Add feature' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    const sw = () => container.querySelector<HTMLInputElement>('.autosquash-switch input')!;
+    const order = () => [...container.querySelectorAll('.todo-hash')].map(n => n.textContent);
+
+    // Loads with autosquash on (fixup grouped under its target).
+    await waitFor(() => expect(order()).toEqual(['c1', 'c3', 'c2']));
+
+    // Toggle off → on → off → on; each flip must re-arrange, not freeze.
+    for (const expected of [['c1', 'c2', 'c3'], ['c1', 'c3', 'c2'], ['c1', 'c2', 'c3'], ['c1', 'c3', 'c2']]) {
+      await fireEvent.click(sw());
+      await waitFor(() => expect(order()).toEqual(expected));
+    }
+
+    // A non-native control still works after all that toggling (not frozen).
+    // Currently arranged c1,c3,c2 with c2 last; move c2 up.
+    const moveBtns = container.querySelectorAll<HTMLButtonElement>('.move-btn');
+    await fireEvent.click(moveBtns[moveBtns.length - 2]); // last row, up
+    await waitFor(() => expect(order()).toEqual(['c1', 'c2', 'c3']));
+  });
+
+  it('hides the toggle and keeps order when there are no fixup!/squash! commits', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'Add feature' }),
+      commit({ hash: 'c2', subject: 'Add tests' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    expect(container.querySelector('.autosquash-row')).toBeNull();
+    const order = [...container.querySelectorAll('.todo-hash')].map(n => n.textContent);
+    expect(order).toEqual(['c1', 'c2']);
   });
 });
