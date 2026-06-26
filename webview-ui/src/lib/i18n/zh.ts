@@ -166,6 +166,8 @@ export const zh: Record<string, string> = {
   'graph.commitFixup': 'Commit Fixup',
   'graph.savePatch': '另存为补丁',
   'graph.compareToLocal': '与本地更改比较',
+  'graph.viewChanges': '查看更改',
+  'graph.hideChanges': '关闭更改',
   'graph.copyShortSHA': '复制短 SHA',
   'graph.copySHA': '复制提交 SHA',
   'graph.copyCommitInfo': '复制提交信息',

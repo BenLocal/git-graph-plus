@@ -166,6 +166,8 @@ export const ko: Record<string, string> = {
   'graph.commitFixup': 'Commit Fixup',
   'graph.savePatch': '패치로 저장',
   'graph.compareToLocal': '로컬 변경사항과 비교',
+  'graph.viewChanges': '변경사항 보기',
+  'graph.hideChanges': '변경사항 닫기',
   'graph.copyShortSHA': 'Short SHA 복사',
   'graph.copySHA': 'Commit SHA 복사',
   'graph.copyCommitInfo': 'Commit 정보 복사',

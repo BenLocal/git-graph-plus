@@ -166,6 +166,8 @@ export const en: Record<string, string> = {
   'graph.commitFixup': 'Commit Fixup',
   'graph.savePatch': 'Save as Patch',
   'graph.compareToLocal': 'Compare to Local Changes',
+  'graph.viewChanges': 'View Changes',
+  'graph.hideChanges': 'Hide Changes',
   'graph.copyShortSHA': 'Copy Short SHA',
   'graph.copySHA': 'Copy Commit SHA',
   'graph.copyCommitInfo': 'Copy Commit Info',

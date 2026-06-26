@@ -566,7 +566,7 @@
       <button class="tab-action-btn" aria-label={uiStore.commitDetailFullscreen ? t('details.restore') : t('details.fullscreen')} use:tooltip={uiStore.commitDetailFullscreen ? t('details.restore') : t('details.fullscreen')} onclick={() => { uiStore.commitDetailFullscreen = !uiStore.commitDetailFullscreen; }}>
         <i class="codicon {uiStore.commitDetailFullscreen ? 'codicon-chevron-down' : 'codicon-chevron-up'}"></i>
       </button>
-      <button class="tab-action-btn" aria-label={t('common.close')} use:tooltip={t('common.close')} onclick={() => { uiStore.selectCommit(null); uiStore.showBottomPanel = false; uiStore.commitDetailFullscreen = false; }}>
+      <button class="tab-action-btn" aria-label={t('common.close')} use:tooltip={t('common.close')} onclick={() => { if (!uiStore.multiSelectArmed) { uiStore.selectCommit(null); } uiStore.showBottomPanel = false; uiStore.commitDetailFullscreen = false; }}>
         <i class="codicon codicon-close"></i>
       </button>
     </div>

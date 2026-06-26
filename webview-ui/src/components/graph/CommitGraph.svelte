@@ -650,6 +650,13 @@
         .reverse();
       const multiItems: any[] = [];
 
+      // Toggle the bottom panel showing the comparison of the selected commits.
+      multiItems.push({
+        label: uiStore.showBottomPanel ? t('graph.hideChanges') : t('graph.viewChanges'),
+        action: () => { uiStore.showBottomPanel = !uiStore.showBottomPanel; },
+      });
+      multiItems.push({ separator: true, label: '', action: () => {} });
+
       const chain = getSquashChain(sel, commitStore.commitMap as Map<string, Commit>);
       if (chain) {
         multiItems.push({
@@ -1092,7 +1099,10 @@
   // Orchestration: when armed selection changes, request the right compare data.
   let lastCompareKey = '';
   $effect(() => {
-    if (!uiStore.multiSelectArmed) { lastCompareKey = ''; return; }
+    // Only fetch the comparison while the bottom panel is open — the panel hosts
+    // CommitDetails, which is the listener for the compare/section responses.
+    // Opening it via "View Changes" re-runs this effect and (re)loads the data.
+    if (!uiStore.multiSelectArmed || !uiStore.showBottomPanel) { lastCompareKey = ''; return; }
     const sel = uiStore.selectedCommitHashes;
     if (sel.length < 2) { lastCompareKey = ''; return; }
     // Order by display order (newest first).
@@ -1154,6 +1164,8 @@
   if (e.key === 'Escape') {
     if (bisectBadCommit) { bisectBadCommit = null; }
     else if (bisectCulpritHash) { vscode.postMessage({ type: 'bisectReset' }); }
+    // 1st Esc closes the open bottom panel; 2nd Esc clears the selection.
+    else if (uiStore.multiSelectArmed && uiStore.showBottomPanel) { uiStore.showBottomPanel = false; }
     else if (uiStore.multiSelectArmed) { uiStore.exitMultiSelect(); }
   } else {
     handleGraphNavKey(e);
