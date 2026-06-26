@@ -1,7 +1,11 @@
 // Shared, lazily-bound global handlers so each tooltip instance doesn't add its own
 // window listeners (there can be hundreds of tooltips across the virtual-scrolled
 // graph, and they churn on every row create/destroy).
-const shownTips = new Set<() => void>();
+//
+// Tracks every instance with a tooltip that is either showing OR has a pending
+// hover timer. Each entry's hide() cancels the timer and removes the element, so
+// hideAll() dismisses both. Only one tooltip should ever be active at a time.
+const activeTips = new Set<() => void>();
 let globalsBound = false;
 
 // Ref-counted suppression. While > 0, no tooltip may show — used by transient
@@ -12,7 +16,7 @@ let suppressDepth = 0;
 
 function hideAll() {
   // Copy first: hide() mutates the set.
-  for (const h of [...shownTips]) h();
+  for (const h of [...activeTips]) h();
 }
 
 /**
@@ -81,18 +85,25 @@ export function tooltip(node: HTMLElement, text: string | undefined) {
   function show(e: MouseEvent) {
     if (!text || suppressDepth > 0) return;
     hide();
+    // Entering a nested tooltip element (e.g. a link inside the commit subject
+    // span, which also has a tooltip) does not fire mouseleave on the ancestor,
+    // so its tooltip would linger and overlap this one. mouseenter fires
+    // ancestor-first, so dismissing every other active tooltip here leaves only
+    // the innermost hovered element showing one.
+    hideAll();
     mouseX = e.clientX;
     mouseY = e.clientY;
     // Track the mouse only while hovering (not for the lifetime of the node).
     node.addEventListener('mousemove', onMouseMove);
+    // Register while still pending so a nested hover (or suppression) can cancel us.
+    activeTips.add(hide);
     timer = setTimeout(() => {
       // A suppression (e.g. context menu) may have opened while we waited.
-      if (suppressDepth > 0) return;
+      if (suppressDepth > 0) { hide(); return; }
       el = document.createElement('div');
       el.className = 'vsg-tooltip';
       el.textContent = text ?? null;
       document.body.appendChild(el);
-      shownTips.add(hide);
       position();
     }, 500);
   }
@@ -102,7 +113,7 @@ export function tooltip(node: HTMLElement, text: string | undefined) {
     node.removeEventListener('mousemove', onMouseMove);
     el?.remove();
     el = null;
-    shownTips.delete(hide);
+    activeTips.delete(hide);
   }
 
   // Chromium/Electron does not fire mouseleave when `disabled` is set while hovering,

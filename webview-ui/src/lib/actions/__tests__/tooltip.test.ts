@@ -11,6 +11,12 @@ function mouseEvent(type: string, x = 100, y = 100): MouseEvent {
   return new MouseEvent(type, { clientX: x, clientY: y, bubbles: true });
 }
 
+// mouseenter/mouseleave do not bubble in real browsers; for nested-element tests
+// bubbling would re-fire an ancestor's listener and mask the behaviour under test.
+function enterEvent(x = 100, y = 100): MouseEvent {
+  return new MouseEvent('mouseenter', { clientX: x, clientY: y, bubbles: false });
+}
+
 function getTooltipEl(): HTMLElement | null {
   return document.body.querySelector('.vsg-tooltip');
 }
@@ -228,6 +234,48 @@ describe('tooltip action', () => {
     node.dispatchEvent(mouseEvent('mouseenter'));
     vi.advanceTimersByTime(500);
     expect(getTooltipEl()).not.toBeNull();
+  });
+
+  it('entering a nested tooltip element dismisses the ancestor tooltip (no overlap)', () => {
+    // Mirrors the commit subject: a span with a tooltip wrapping a link that
+    // also has one. Hovering the link must not leave both tooltips on screen.
+    const parent = document.createElement('span');
+    const child = document.createElement('a');
+    parent.appendChild(child);
+    document.body.appendChild(parent);
+    tooltip(parent, 'full commit subject');
+    tooltip(child, 'open link');
+
+    // Hover the parent first, let its tooltip show.
+    parent.dispatchEvent(enterEvent());
+    vi.advanceTimersByTime(500);
+    expect(getTooltipEl()!.textContent).toBe('full commit subject');
+
+    // Move into the child (ancestor gets no mouseleave). Its tooltip must replace
+    // the parent's, never coexist with it.
+    child.dispatchEvent(enterEvent());
+    vi.advanceTimersByTime(500);
+    const tips = document.body.querySelectorAll('.vsg-tooltip');
+    expect(tips.length).toBe(1);
+    expect(tips[0].textContent).toBe('open link');
+  });
+
+  it('a nested hover cancels the ancestor pending timer so it never appears', () => {
+    const parent = document.createElement('span');
+    const child = document.createElement('a');
+    parent.appendChild(child);
+    document.body.appendChild(parent);
+    tooltip(parent, 'parent');
+    tooltip(child, 'child');
+
+    // Parent timer pending (not yet fired), then quickly move into the child.
+    parent.dispatchEvent(enterEvent());
+    vi.advanceTimersByTime(200);
+    child.dispatchEvent(enterEvent());
+    vi.advanceTimersByTime(500);
+    const tips = document.body.querySelectorAll('.vsg-tooltip');
+    expect(tips.length).toBe(1);
+    expect(tips[0].textContent).toBe('child');
   });
 
   it('hovering near the viewport edge flips position to the other side', () => {
