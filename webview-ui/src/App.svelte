@@ -1079,11 +1079,17 @@ import AmendModal from './components/modals/AmendModal.svelte';
   .bottom-area {
     overflow: hidden;
     flex-shrink: 0;
+    /* bottomPanelHeight is a fixed px value that isn't recomputed when the
+       viewport shrinks (e.g. opening the terminal). Cap the panel to the
+       available area so it can never overflow .content-area and get clipped;
+       BottomPanel then scrolls internally instead of becoming unreachable. */
+    max-height: 80%;
     border-top: 1px solid var(--border-color);
   }
 
   .bottom-area.fullscreen {
     flex: 1;
+    max-height: none;
     border-top: none;
   }
 
