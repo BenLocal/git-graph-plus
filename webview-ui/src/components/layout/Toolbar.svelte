@@ -176,15 +176,6 @@
   <div class="toolbar-right">
     <button
       class="toolbar-btn"
-      onclick={refresh}
-      disabled={uiStore.operating !== null}
-      use:tooltip={t('toolbar.refresh')}
-    >
-      {#if uiStore.operating === 'refresh'}<span class="spinner"></span>{:else}<i class="codicon codicon-refresh"></i>{/if}
-    </button>
-    <span class="separator"></span>
-    <button
-      class="toolbar-btn"
       onclick={doFetch}
       disabled={uiStore.operating !== null}
       use:tooltip={t('toolbar.fetchAll')}
@@ -312,6 +303,14 @@
       {/if}
     </div>
     <span class="separator"></span>
+    <button
+      class="toolbar-btn"
+      onclick={refresh}
+      disabled={uiStore.operating !== null}
+      use:tooltip={t('toolbar.refresh')}
+    >
+      {#if uiStore.operating === 'refresh'}<span class="spinner"></span>{:else}<i class="codicon codicon-refresh"></i>{/if}
+    </button>
     <button
       class="toolbar-btn"
       onclick={() => { vscode.postMessage({ type: 'openExtensionSettings' }); }}
