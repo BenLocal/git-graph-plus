@@ -275,6 +275,7 @@ export const ko: Record<string, string> = {
   'search.noResults': '결과 없음',
   'search.prev': '이전 결과 (Shift+Enter)',
   'search.next': '다음 결과 (Enter)',
+  'search.jumpToHead': 'HEAD로 이동',
   'search.filters': '필터',
   'search.authorFilter': '작성자 필터',
   'search.sourceFilter': '소스',

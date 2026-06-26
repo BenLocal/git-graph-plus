@@ -102,3 +102,17 @@ describe('commitStore lookups', () => {
     expect(map.get('zzz')).toBeUndefined();
   });
 });
+
+describe('commitStore.headHash', () => {
+  it('returns the hash of the commit carrying a head ref', () => {
+    const head = makeCommit('h1');
+    head.refs = [{ type: 'head', name: 'HEAD' }];
+    commitStore.commits = [makeCommit('h0'), head];
+    expect(commitStore.headHash).toBe('h1');
+  });
+
+  it('returns null when no commit carries a head ref', () => {
+    commitStore.commits = [makeCommit('h0'), makeCommit('h1')];
+    expect(commitStore.headHash).toBeNull();
+  });
+});

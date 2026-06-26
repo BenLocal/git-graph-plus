@@ -14,6 +14,8 @@
     branches?: BranchInfo[];
     branchFilter?: string[];
     onBranchFilterChange?: (filter: string[]) => void;
+    headOffscreen?: boolean;
+    onJumpToHead?: () => void;
   }
 
   let {
@@ -25,6 +27,8 @@
     branches = [],
     branchFilter = [],
     onBranchFilterChange = () => {},
+    headOffscreen = false,
+    onJumpToHead = () => {},
   }: Props = $props();
 
   let query = $state('');
@@ -38,6 +42,8 @@
   const filterActive = $derived(remoteFilter.length > 0);
 
   const branchFilterActive = $derived(branchFilter.length > 0);
+
+  const hasHead = $derived(commitStore.headHash !== null);
 
   const localBranches = $derived(
     (remoteFilter.length === 0 || remoteFilter.includes('local'))
@@ -99,6 +105,7 @@
         ...commit.refs
           .filter(r => r.type === 'branch' || r.type === 'remote-branch' || r.type === 'tag')
           .flatMap(r => r.type === 'remote-branch' && r.remote ? [r.name, `${r.remote}/${r.name}`] : [r.name]),
+        ...(commit.refs.some(r => r.type === 'head') ? ['HEAD'] : []),
       ].join(' ').toLowerCase();
 
       if (haystack.includes(q)) {
@@ -222,6 +229,17 @@
       </button>
     {/if}
   </div>
+
+  <button
+    class="head-btn"
+    class:active={headOffscreen}
+    onclick={() => onJumpToHead()}
+    disabled={!hasHead}
+    aria-label={t('search.jumpToHead')}
+    use:tooltip={t('search.jumpToHead')}
+  >
+    <i class="codicon codicon-location"></i>
+  </button>
 
   <div class="filter-wrap">
     <button
@@ -464,6 +482,37 @@
   .filter-wrap {
     position: relative;
     flex-shrink: 0;
+  }
+
+  .head-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: color 0.1s, border-color 0.1s;
+  }
+
+  .head-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--vscode-focusBorder, #007fd4);
+  }
+
+  .head-btn.active {
+    color: var(--vscode-focusBorder, #007fd4);
+    border-color: var(--vscode-focusBorder, #007fd4);
+  }
+
+  .head-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
   .filter-btn {

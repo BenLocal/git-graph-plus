@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeNavigationTarget, computeScrollTop, computeJumpTarget } from '../graph-navigation';
+import { computeNavigationTarget, computeScrollTop, computeJumpTarget, isRowOffscreen } from '../graph-navigation';
 
 // Newest-first list. Linear chain a <- b <- c with a merge:
 //   a (top/newest)  parents: [b]
@@ -224,5 +224,31 @@ describe('computeJumpTarget', () => {
   it('no-ops and preserves the path when there is no loaded child', () => {
     // a has no children
     expect(computeJumpTarget(jg, 'a', 'up', ['a'])).toEqual({ target: null, path: ['a'] });
+  });
+});
+
+describe('isRowOffscreen', () => {
+  it('row above the viewport is offscreen', () => {
+    // row 0 spans 0..30px; viewport is 300..900
+    expect(isRowOffscreen(0, 30, 300, 600)).toBe(true);
+  });
+
+  it('row below the viewport is offscreen', () => {
+    // row 40 spans 1200..1230px; viewport is 0..600
+    expect(isRowOffscreen(40, 30, 0, 600)).toBe(true);
+  });
+
+  it('row inside the viewport is on-screen', () => {
+    // row 10 spans 300..330px; viewport is 0..600
+    expect(isRowOffscreen(10, 30, 0, 600)).toBe(false);
+  });
+
+  it('a partially visible row counts as on-screen', () => {
+    // row 20 spans 600..630px; viewport is 0..610 (overlaps 600..610)
+    expect(isRowOffscreen(20, 30, 0, 610)).toBe(false);
+  });
+
+  it('a negative index (no HEAD) is never offscreen', () => {
+    expect(isRowOffscreen(-1, 30, 0, 600)).toBe(false);
   });
 });

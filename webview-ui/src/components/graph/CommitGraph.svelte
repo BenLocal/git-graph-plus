@@ -26,7 +26,7 @@
   import { tooltip } from '../../lib/actions/tooltip';
   import { getSquashChain } from '../../lib/utils/squash';
   import { resolveDrop, dragRebaseMessage, dragMergeMessage } from '../../lib/utils/dragDrop';
-  import { computeNavigationTarget, computeScrollTop, computeJumpTarget, type ScrollAlign } from '../../lib/graph-navigation';
+  import { computeNavigationTarget, computeScrollTop, computeJumpTarget, isRowOffscreen, type ScrollAlign } from '../../lib/graph-navigation';
   import LinkifiedText from '../common/LinkifiedText.svelte';
 
 
@@ -73,9 +73,11 @@
     bisectActive?: boolean;
     bisectCulpritHash?: string | null;
     remoteFilter?: string[];
+    headJumpNonce?: number;
+    onHeadOffscreenChange?: (offscreen: boolean) => void;
   }
 
-  let { searchMatchedHashes = null, searchNavigateHash = null, bisectActive = false, bisectCulpritHash = null, remoteFilter = [] }: Props = $props();
+  let { searchMatchedHashes = null, searchNavigateHash = null, bisectActive = false, bisectCulpritHash = null, remoteFilter = [], headJumpNonce = 0, onHeadOffscreenChange = () => {} }: Props = $props();
 
   const vscode = getVsCodeApi();
 
@@ -363,6 +365,39 @@
     if (searchNavigateHash && container) {
       navPath = [];
       scrollHashIntoView(searchNavigateHash, 'center');
+    }
+  });
+
+  // HEAD's row index, recomputed only when the commit set or HEAD changes - not
+  // on every scroll - so the offscreen check below stays O(1) per scroll frame
+  // instead of re-scanning displayCommits each time scrollTop updates.
+  const headRowIndex = $derived.by(() => {
+    const headHash = commitStore.headHash;
+    return headHash ? displayCommits.findIndex(c => c.hash === headHash) : -1;
+  });
+
+  // Tell the toolbar's "jump to HEAD" button whether HEAD is currently off-screen,
+  // so it emphasizes itself only when scrolling is actually needed. Recomputed on
+  // scroll (scrollTop), resize (viewportHeight) and data changes (headRowIndex).
+  // Guarded so we only notify the parent when the boolean actually flips.
+  let lastHeadOffscreen: boolean | null = null;
+  $effect(() => {
+    const offscreen = isRowOffscreen(headRowIndex, ROW_HEIGHT, scrollTop, viewportHeight);
+    if (offscreen !== lastHeadOffscreen) {
+      lastHeadOffscreen = offscreen;
+      onHeadOffscreenChange(offscreen);
+    }
+  });
+
+  // Scroll HEAD into view (centered) when the toolbar button is clicked. The nonce
+  // (not the hash) drives this so repeated clicks re-scroll even when HEAD hasn't
+  // changed. The initial value (0) is skipped so opening the graph never jumps.
+  let lastHeadJumpNonce = 0;
+  $effect(() => {
+    if (headJumpNonce !== lastHeadJumpNonce) {
+      lastHeadJumpNonce = headJumpNonce;
+      const headHash = commitStore.headHash;
+      if (headHash) scrollHashIntoView(headHash, 'center');
     }
   });
 

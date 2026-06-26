@@ -263,6 +263,23 @@ describe('SearchBar — filter UI', () => {
   });
 });
 
+describe('SearchBar — HEAD keyword', () => {
+  it('typing HEAD matches the commit carrying a head ref', async () => {
+    setCommits([
+      commit({ hash: 'h1', subject: 'one' }),
+      commit({ hash: 'h2', subject: 'two', refs: [{ type: 'head', name: 'HEAD' }] }),
+    ]);
+    const onResults = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onResults });
+    const input = container.querySelector<HTMLInputElement>('.search-input')!;
+    await fireEvent.input(input, { target: { value: 'HEAD' } });
+    vi.advanceTimersByTime(150);
+    const matched = onResults.mock.calls.at(-1)![0] as Set<string>;
+    expect(matched.has('h2')).toBe(true);
+    expect(matched.has('h1')).toBe(false);
+  });
+});
+
 describe('SearchBar — branch filter', () => {
   const branches: BranchInfo[] = [
     { name: 'main', current: true, ahead: 0, behind: 0, hash: 'h' },
@@ -312,5 +329,32 @@ describe('SearchBar — branch filter', () => {
     const items = container.querySelectorAll<HTMLButtonElement>('.dd-item');
     await fireEvent.click(items[0]);
     expect(onBranchFilterChange).toHaveBeenCalledWith([]);
+  });
+});
+
+describe('SearchBar — jump to HEAD button', () => {
+  it('is disabled when no commit is HEAD', () => {
+    setCommits([commit({ hash: 'h1' })]);
+    const { container } = render(SearchBar, { ...baseProps });
+    const btn = container.querySelector<HTMLButtonElement>('.head-btn')!;
+    expect(btn).toBeTruthy();
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('is enabled and calls onJumpToHead when clicked', async () => {
+    setCommits([commit({ hash: 'h1', refs: [{ type: 'head', name: 'HEAD' }] })]);
+    const onJumpToHead = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onJumpToHead });
+    const btn = container.querySelector<HTMLButtonElement>('.head-btn')!;
+    expect(btn.disabled).toBe(false);
+    await fireEvent.click(btn);
+    expect(onJumpToHead).toHaveBeenCalled();
+  });
+
+  it('has the active class when headOffscreen is true', () => {
+    setCommits([commit({ hash: 'h1', refs: [{ type: 'head', name: 'HEAD' }] })]);
+    const { container } = render(SearchBar, { ...baseProps, headOffscreen: true });
+    const btn = container.querySelector<HTMLButtonElement>('.head-btn')!;
+    expect(btn.classList.contains('active')).toBe(true);
   });
 });

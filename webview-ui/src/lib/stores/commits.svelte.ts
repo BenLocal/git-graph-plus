@@ -61,6 +61,16 @@ class CommitStore {
     return this.commitByHash;
   }
 
+  /** Hash of the loaded commit currently at HEAD (the commit carrying a
+   *  `head` ref), or null when no loaded commit is HEAD (e.g. filtered out).
+   *  Works for detached HEAD since it keys off the ref, not the current branch. */
+  get headHash(): string | null {
+    for (const c of this.commits) {
+      if (c.refs.some((r) => r.type === 'head')) return c.hash;
+    }
+    return null;
+  }
+
   getGraphNode(hash: string): GraphNode | undefined {
     return this.nodeByHash.get(hash);
   }

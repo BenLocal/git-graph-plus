@@ -275,6 +275,7 @@ export const en: Record<string, string> = {
   'search.noResults': 'No results',
   'search.prev': 'Previous match (Shift+Enter)',
   'search.next': 'Next match (Enter)',
+  'search.jumpToHead': 'Jump to HEAD',
   'search.filters': 'Filters',
   'search.authorFilter': 'Author filter',
   'search.sourceFilter': 'Source',

@@ -143,3 +143,22 @@ export function computeJumpTarget(
   const trimmed = pushed.length > maxPath ? pushed.slice(pushed.length - maxPath) : pushed;
   return { target, path: trimmed };
 }
+
+/**
+ * True when the row at `rowIndex` is entirely outside the visible viewport
+ * (fully above the top or fully below the bottom). A row that is even partially
+ * visible counts as on-screen. Uses the real viewport - not the render buffer -
+ * so it reflects what the user can actually see. A negative `rowIndex` (e.g. no
+ * HEAD in the list) is treated as on-screen so callers don't emphasize a no-op.
+ */
+export function isRowOffscreen(
+  rowIndex: number,
+  rowHeight: number,
+  scrollTop: number,
+  viewportHeight: number,
+): boolean {
+  if (rowIndex < 0) return false;
+  const top = rowIndex * rowHeight;
+  const bottom = top + rowHeight;
+  return bottom <= scrollTop || top >= scrollTop + viewportHeight;
+}

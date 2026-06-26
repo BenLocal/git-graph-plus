@@ -275,6 +275,7 @@ export const zh: Record<string, string> = {
   'search.noResults': '无结果',
   'search.prev': '上一个匹配（Shift+Enter）',
   'search.next': '下一个匹配（Enter）',
+  'search.jumpToHead': '跳转到 HEAD',
   'search.filters': '筛选',
   'search.authorFilter': '作者筛选',
   'search.sourceFilter': '来源',
