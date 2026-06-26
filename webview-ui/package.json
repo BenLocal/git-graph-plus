@@ -9,6 +9,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
+    "marked": "^12.0.2",
     "shiki": "^1.0.0"
   },
   "devDependencies": {

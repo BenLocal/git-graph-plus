@@ -252,6 +252,8 @@ export const zh: Record<string, string> = {
   'details.browseFiles': '浏览文件',
   'details.inline': '内联',
   'details.sideBySide': '并排',
+  'details.viewMarkdown': 'Markdown',
+  'details.viewPlain': '纯文本',
   'details.binaryFile': '二进制文件',
   'details.diffTruncated': '大型差异：显示 {total} 行中的 {shown} 行',
   'details.showFullDiff': '显示完整差异',

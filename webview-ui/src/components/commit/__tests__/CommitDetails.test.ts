@@ -1012,6 +1012,37 @@ describe('CommitDetails — large diff render cap', () => {
   });
 });
 
+describe('CommitDetails — markdown toggle', () => {
+  beforeEach(() => {
+    i18n.setLocale('en');
+  });
+
+  it('renders markdown by default when the message has markdown (bold subject becomes <strong>)', () => {
+    const { container } = render(CommitDetails, {
+      commit: commit({ subject: '**bold** subject', body: '- one\n- two', parents: [] }),
+    });
+    expect(container.querySelector('.message-section strong')?.textContent).toBe('bold');
+  });
+
+  it('switches to plain text when the Plain toggle is clicked', async () => {
+    const { container, getByText } = render(CommitDetails, {
+      commit: commit({ subject: '**bold** subject', body: '- one\n- two', parents: [] }),
+    });
+    await fireEvent.click(getByText('Plain Text'));
+    expect(container.querySelector('.message-section strong')).toBeNull();
+    expect(container.querySelector('.message-section')?.textContent).toContain('**bold**');
+  });
+
+  it('hides the toggle and shows plain text when the message has no markdown', () => {
+    const { container, queryByText } = render(CommitDetails, {
+      commit: commit({ subject: 'Fix crash on startup', body: 'No markdown here.', parents: [] }),
+    });
+    expect(container.querySelector('.message-view-toggle')).toBeNull();
+    expect(queryByText('Markdown')).toBeNull();
+    expect(container.querySelector('.message-subject')?.textContent).toContain('Fix crash on startup');
+  });
+});
+
 describe('CommitDetails — reverse changes (committed view)', () => {
   // A small modified-file diff: context (idx 0), delete (idx 1), add (idx 2).
   // FileDiffView renders one .diff-line per entry; gutters share those indices.

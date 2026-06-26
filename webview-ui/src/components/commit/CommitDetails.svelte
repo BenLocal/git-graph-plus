@@ -14,12 +14,29 @@
   import { tooltip } from '../../lib/actions/tooltip';
   import { modalStore } from '../../lib/stores/modals.svelte';
   import LinkifiedText from '../common/LinkifiedText.svelte';
+  import Markdown from '../common/Markdown.svelte';
+  import { hasMarkdown } from '../../lib/markdown-detect';
 
   interface Props {
     commit?: Commit;
   }
 
   let { commit }: Props = $props();
+
+  // Commit message rendering: auto-detect Markdown per commit. When the message
+  // has no Markdown we show plain text with no toggle. When it does, we default
+  // to Markdown and let the user switch to plain — that choice applies only
+  // while viewing this commit (keyed by hash), so navigating re-detects.
+  let messageOverride = $state<{ hash: string; mode: 'markdown' | 'plain' } | null>(null);
+  const messageText = $derived(
+    commit ? (commit.body ? `${commit.subject}\n\n${commit.body}` : commit.subject) : '',
+  );
+  const messageHasMarkdown = $derived(hasMarkdown(messageText));
+  const messageMode = $derived<'markdown' | 'plain'>(
+    messageOverride && commit && messageOverride.hash === commit.hash
+      ? messageOverride.mode
+      : 'markdown',
+  );
 
   const vscode = getVsCodeApi();
 
@@ -699,9 +716,27 @@
 
       <!-- Commit message -->
       <div class="message-section">
-        <div class="message-subject"><LinkifiedText text={commit.subject} /></div>
-        {#if commit.body}
-          <div class="message-body"><LinkifiedText text={commit.body} /></div>
+        {#if messageHasMarkdown}
+          <div class="message-view-toggle">
+            <button
+              class:active={messageMode === 'markdown'}
+              onclick={() => { messageOverride = { hash: commit.hash, mode: 'markdown' }; }}
+            >{t('details.viewMarkdown')}</button>
+            <button
+              class:active={messageMode === 'plain'}
+              onclick={() => { messageOverride = { hash: commit.hash, mode: 'plain' }; }}
+            >{t('details.viewPlain')}</button>
+          </div>
+        {/if}
+        {#if messageHasMarkdown && messageMode === 'markdown'}
+          <div class="message-markdown">
+            <Markdown text={messageText} />
+          </div>
+        {:else}
+          <div class="message-subject"><LinkifiedText text={commit.subject} /></div>
+          {#if commit.body}
+            <div class="message-body"><LinkifiedText text={commit.body} /></div>
+          {/if}
         {/if}
       </div>
     </div>
@@ -1428,6 +1463,29 @@
     line-height: 1.6;
     margin-top: 10px;
     font-family: var(--vscode-editor-font-family, monospace);
+  }
+
+  .message-view-toggle {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 14px;
+  }
+  .message-view-toggle button {
+    padding: 2px 8px;
+    font-size: 11px;
+    border: 1px solid var(--vscode-panel-border);
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .message-view-toggle button.active {
+    background: var(--vscode-button-secondaryBackground, var(--vscode-toolbar-activeBackground));
+    color: var(--vscode-foreground);
+  }
+  .message-markdown {
+    font-size: var(--vscode-font-size, 13px);
+    line-height: 1.5;
   }
 
   /* ── Changes tab ── */

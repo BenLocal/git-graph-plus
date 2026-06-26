@@ -252,6 +252,8 @@ export const en: Record<string, string> = {
   'details.browseFiles': 'Browse Files',
   'details.inline': 'Inline',
   'details.sideBySide': 'Side by Side',
+  'details.viewMarkdown': 'Markdown',
+  'details.viewPlain': 'Plain Text',
   'details.binaryFile': 'Binary file',
   'details.diffTruncated': 'Large diff: showing {shown} of {total} lines',
   'details.showFullDiff': 'Show full diff',

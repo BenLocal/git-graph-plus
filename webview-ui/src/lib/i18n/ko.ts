@@ -252,6 +252,8 @@ export const ko: Record<string, string> = {
   'details.browseFiles': '파일 탐색',
   'details.inline': '인라인',
   'details.sideBySide': '나란히 보기',
+  'details.viewMarkdown': 'Markdown',
+  'details.viewPlain': '일반 텍스트',
   'details.binaryFile': '바이너리 파일',
   'details.diffTruncated': '큰 diff: 전체 {total}줄 중 {shown}줄 표시',
   'details.showFullDiff': '전체 diff 보기',
