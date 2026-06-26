@@ -311,6 +311,15 @@
         </div>
       {/if}
     </div>
+    <span class="separator"></span>
+    <button
+      class="toolbar-btn"
+      onclick={() => { vscode.postMessage({ type: 'openExtensionSettings' }); }}
+      aria-label={t('toolbar.settings')}
+      use:tooltip={t('toolbar.settings')}
+    >
+      <i class="codicon codicon-gear"></i>
+    </button>
   </div>
 </div>
 

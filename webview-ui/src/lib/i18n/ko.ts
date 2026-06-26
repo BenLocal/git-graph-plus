@@ -12,6 +12,7 @@ export const ko: Record<string, string> = {
   'toolbar.pullDesc': 'Pull (Fetch + Merge)',
   'toolbar.pushDesc': 'Push (로컬 commit 업로드)',
   'toolbar.refreshDesc': '새로고침 (Ctrl+R)',
+  'toolbar.settings': '확장 프로그램 설정 열기',
   'toolbar.noRemotes': '설정된 리모트가 없습니다. 먼저 리모트를 추가하세요.',
   'toolbar.addRemote': '리모트 추가',
   'toolbar.detachedHead': '(Detached HEAD)',

@@ -740,6 +740,11 @@ export class MainPanel {
           }
           break;
         }
+        case 'openExtensionSettings': {
+          // Opens VS Code Settings pre-filtered to this extension's settings.
+          await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:the0807.git-graph-plus');
+          break;
+        }
         case 'amendCommit': {
           await this.gitService.amendCommit(message.payload);
           // Optional follow-up: amend rewrites HEAD, so the push force-pushes

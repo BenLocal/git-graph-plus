@@ -120,7 +120,8 @@ export type WebviewMessage =
   | { type: 'getUncommittedFileDiff'; payload: { file: string; staged: boolean } }
   | { type: 'getMultiCommitSections'; payload: { hashes: string[] } }
   | { type: 'getAvatar'; payload: { email: string; size: number } }
-  | { type: 'openExternalUrl'; payload: { url: string } };
+  | { type: 'openExternalUrl'; payload: { url: string } }
+  | { type: 'openExtensionSettings' };
 
 // Messages from Extension → Webview
 export type ExtensionMessage =

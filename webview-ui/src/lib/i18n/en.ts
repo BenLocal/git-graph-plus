@@ -12,6 +12,7 @@ export const en: Record<string, string> = {
   'toolbar.pullDesc': 'Pull (Fetch + Merge)',
   'toolbar.pushDesc': 'Push (upload local commits)',
   'toolbar.refreshDesc': 'Refresh (Ctrl+R)',
+  'toolbar.settings': 'Open Extension Settings',
   'toolbar.noRemotes': 'No remotes configured. Add a remote first.',
   'toolbar.addRemote': 'Add Remote',
   'toolbar.detachedHead': '(Detached HEAD)',
