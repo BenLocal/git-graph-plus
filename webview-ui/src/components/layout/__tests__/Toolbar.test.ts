@@ -6,6 +6,20 @@ import { branchStore } from '../../../lib/stores/branches.svelte';
 import { uiStore } from '../../../lib/stores/ui.svelte';
 import { modalStore } from '../../../lib/stores/modals.svelte';
 
+// Toolbar buttons are located by their codicon (or wrapper) instead of by
+// position, so reordering the toolbar doesn't break these tests.
+const toolbarBtns = (c: HTMLElement) =>
+  Array.from(c.querySelectorAll<HTMLButtonElement>('.toolbar-btn'));
+const iconBtn = (c: HTMLElement, icon: string) =>
+  toolbarBtns(c).find(b => b.querySelector(`.codicon-${icon}`))!;
+const getFetch = (c: HTMLElement) => iconBtn(c, 'cloud-download');
+const getPull = (c: HTMLElement) => iconBtn(c, 'arrow-down');
+const getPush = (c: HTMLElement) => iconBtn(c, 'arrow-up');
+const getRefresh = (c: HTMLElement) => iconBtn(c, 'refresh');
+const getStash = (c: HTMLElement) => iconBtn(c, 'archive');
+const getFlow = (c: HTMLElement) =>
+  c.querySelector<HTMLButtonElement>('.flow-wrapper .toolbar-btn')!;
+
 function resetStores() {
   branchStore.branches = [];
   branchStore.tags = [];
@@ -50,10 +64,7 @@ describe('Toolbar — view tabs', () => {
 describe('Toolbar — fetch / pull / push', () => {
   it('fetch button with no remotes opens NoRemotesErrorModal', async () => {
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    // After refresh + separator, the next toolbar-btn is "fetch"
-    const fetchBtn = btns[1];
-    await fireEvent.click(fetchBtn);
+    await fireEvent.click(getFetch(container));
     await waitFor(() => {
       expect(document.body.textContent ?? '').toMatch(/no remotes|add remote/i);
     });
@@ -66,8 +77,7 @@ describe('Toolbar — fetch / pull / push', () => {
     ];
     const openFetch = vi.spyOn(modalStore, 'openFetch');
     const { container } = render(Toolbar);
-    const fetchBtn = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn')[1];
-    await fireEvent.click(fetchBtn);
+    await fireEvent.click(getFetch(container));
     expect(openFetch).toHaveBeenCalledWith('origin');
   });
 
@@ -75,9 +85,8 @@ describe('Toolbar — fetch / pull / push', () => {
     branchStore.remotes = [{ name: 'origin', fetchUrl: '', pushUrl: '' }];
     const openFetch = vi.spyOn(modalStore, 'openFetch');
     const { container } = render(Toolbar);
-    const fetchBtn = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn')[1];
     globalThis.__postedMessages = [];
-    await fireEvent.click(fetchBtn);
+    await fireEvent.click(getFetch(container));
     expect(openFetch).not.toHaveBeenCalled();
     const req = globalThis.__postedMessages.find(
       (m) => (m.data as { type?: string }).type === 'fetch'
@@ -92,15 +101,13 @@ describe('Toolbar — fetch / pull / push', () => {
   it('pull button calls modalStore.openPull', async () => {
     const openPull = vi.spyOn(modalStore, 'openPull');
     const { container } = render(Toolbar);
-    const pullBtn = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn')[2];
-    await fireEvent.click(pullBtn);
+    await fireEvent.click(getPull(container));
     expect(openPull).toHaveBeenCalled();
   });
 
   it('push button with no remotes opens the no-remotes modal', async () => {
     const { container } = render(Toolbar);
-    const pushBtn = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn')[3];
-    await fireEvent.click(pushBtn);
+    await fireEvent.click(getPush(container));
     await waitFor(() => {
       expect(document.body.textContent ?? '').toMatch(/no remotes|add remote/i);
     });
@@ -110,8 +117,7 @@ describe('Toolbar — fetch / pull / push', () => {
     branchStore.remotes = [{ name: 'origin', fetchUrl: '', pushUrl: '' }];
     const openPush = vi.spyOn(modalStore, 'openPush');
     const { container } = render(Toolbar);
-    const pushBtn = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn')[3];
-    await fireEvent.click(pushBtn);
+    await fireEvent.click(getPush(container));
     expect(openPush).toHaveBeenCalledWith('origin');
   });
 });
@@ -120,8 +126,7 @@ describe('Toolbar — refresh', () => {
   it('refresh button calls onRefresh and flips operating to "refresh"', async () => {
     const onRefresh = vi.fn();
     const { container } = render(Toolbar, { onRefresh });
-    const refresh = container.querySelector<HTMLButtonElement>('.toolbar-btn')!;
-    await fireEvent.click(refresh);
+    await fireEvent.click(getRefresh(container));
     expect(onRefresh).toHaveBeenCalled();
     expect(uiStore.operating).toBe('refresh');
   });
@@ -129,8 +134,11 @@ describe('Toolbar — refresh', () => {
   it('disables toolbar buttons while operating', async () => {
     uiStore.operating = 'refresh';
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    btns.forEach(b => expect(b.disabled).toBe(true));
+    // The settings gear is always enabled; every operation button is disabled.
+    toolbarBtns(container).forEach(b => {
+      if (b.querySelector('.codicon-gear')) return;
+      expect(b.disabled).toBe(true);
+    });
   });
 
   it('logData message clears operating=refresh', async () => {
@@ -149,6 +157,19 @@ describe('Toolbar — refresh', () => {
     await waitFor(() => {
       expect(uiStore.operating).toBeNull();
     });
+  });
+});
+
+describe('Toolbar — settings', () => {
+  it('settings gear posts openExtensionSettings and stays enabled while operating', async () => {
+    uiStore.operating = 'fetch';
+    const { container } = render(Toolbar);
+    const gear = iconBtn(container, 'gear');
+    expect(gear.disabled).toBe(false);
+    globalThis.__postedMessages = [];
+    await fireEvent.click(gear);
+    const types = globalThis.__postedMessages.map(m => (m.data as { type?: string }).type);
+    expect(types).toContain('openExtensionSettings');
   });
 });
 
@@ -235,10 +256,8 @@ describe('Toolbar — repo dropdown', () => {
 describe('Toolbar — flow dropdown', () => {
   it('opening the flow dropdown posts checkFlowStatus and getFlowBranches', async () => {
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    const flowBtn = btns[btns.length - 1];
     globalThis.__postedMessages = [];
-    await fireEvent.click(flowBtn);
+    await fireEvent.click(getFlow(container));
     const types = globalThis.__postedMessages.map(m => (m.data as { type?: string }).type);
     expect(types).toContain('checkFlowStatus');
     expect(types).toContain('getFlowBranches');
@@ -246,8 +265,7 @@ describe('Toolbar — flow dropdown', () => {
 
   it('flow not initialized renders an "Initialize" button', async () => {
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[btns.length - 1]);
+    await fireEvent.click(getFlow(container));
     window.dispatchEvent(new MessageEvent('message', {
       data: { type: 'flowStatus', payload: { installed: true, initialized: false } },
     }));
@@ -258,8 +276,7 @@ describe('Toolbar — flow dropdown', () => {
 
   it('flow initialized renders feature/release/hotfix start buttons', async () => {
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[btns.length - 1]);
+    await fireEvent.click(getFlow(container));
     window.dispatchEvent(new MessageEvent('message', {
       data: { type: 'flowStatus', payload: { installed: true, initialized: true } },
     }));
@@ -289,8 +306,7 @@ describe('Toolbar — repo dropdown backdrop and flow buttons', () => {
 
   it('flow dropdown backdrop click closes the dropdown', async () => {
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[btns.length - 1]); // flow button
+    await fireEvent.click(getFlow(container)); // flow button
     expect(container.querySelector('.flow-dropdown')).not.toBeNull();
     await fireEvent.click(container.querySelector<HTMLDivElement>('.flow-dropdown-backdrop')!);
     expect(container.querySelector('.flow-dropdown')).toBeNull();
@@ -299,8 +315,7 @@ describe('Toolbar — repo dropdown backdrop and flow buttons', () => {
   it('"Initialize" button in flow dropdown opens FlowInit modal', async () => {
     const openFlowInit = vi.spyOn(modalStore, 'openFlowInit');
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[btns.length - 1]);
+    await fireEvent.click(getFlow(container));
     window.dispatchEvent(new MessageEvent('message', {
       data: { type: 'flowStatus', payload: { installed: true, initialized: false } },
     }));
@@ -318,11 +333,9 @@ describe('Toolbar — repo dropdown backdrop and flow buttons', () => {
   it('clicking "Start Feature/Release/Hotfix" opens the FlowStart modal', async () => {
     const openFlowStart = vi.spyOn(modalStore, 'openFlowStart');
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    const flowBtn = btns[btns.length - 1];
 
     async function clickItem(matcher: (text: string) => boolean) {
-      await fireEvent.click(flowBtn); // open dropdown
+      await fireEvent.click(getFlow(container)); // open dropdown
       window.dispatchEvent(new MessageEvent('message', {
         data: { type: 'flowStatus', payload: { installed: true, initialized: true } },
       }));
@@ -349,11 +362,9 @@ describe('Toolbar — repo dropdown backdrop and flow buttons', () => {
   it('FlowFinish submenu items open the FlowFinish modal with branch name', async () => {
     const openFlowFinish = vi.spyOn(modalStore, 'openFlowFinish');
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    const flowBtn = btns[btns.length - 1];
 
     async function clickBranchItem(branchName: string) {
-      await fireEvent.click(flowBtn);
+      await fireEvent.click(getFlow(container));
       window.dispatchEvent(new MessageEvent('message', {
         data: { type: 'flowStatus', payload: { installed: true, initialized: true } },
       }));
@@ -385,8 +396,7 @@ describe('Toolbar — no-remotes error modal', () => {
   it('Add Remote button in the error modal closes the error and opens AddRemoteModal', async () => {
     const { container } = render(Toolbar);
     // Fetch with no remotes opens the no-remotes error modal
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[1]); // fetch
+    await fireEvent.click(getFetch(container));
     await waitFor(() => {
       const text = document.body.textContent ?? '';
       expect(text).toMatch(/add remote/i);
@@ -404,8 +414,7 @@ describe('Toolbar — no-remotes error modal', () => {
 
   it('cancel on the error modal closes it without opening AddRemote', async () => {
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[1]); // fetch
+    await fireEvent.click(getFetch(container));
     await waitFor(() => container.querySelector('button.primary'));
     // The first non-X button in the form-actions is cancel
     const actionBtns = container.querySelectorAll<HTMLButtonElement>('.form-actions button');
@@ -420,8 +429,7 @@ describe('Toolbar — AddRemote modal flow', () => {
   it('submitting AddRemote modal closes it and posts addRemote', async () => {
     const { container } = render(Toolbar);
     // Trigger the no-remotes error path
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[1]); // fetch
+    await fireEvent.click(getFetch(container));
     await waitFor(() => container.querySelector('button.primary'));
     // Click "Add Remote" in the error modal
     await fireEvent.click(container.querySelector<HTMLButtonElement>('button.primary')!);
@@ -449,8 +457,7 @@ describe('Toolbar — AddRemote modal flow', () => {
 
   it('AddRemote modal X button closes the modal without posting', async () => {
     const { container } = render(Toolbar);
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[1]);
+    await fireEvent.click(getFetch(container));
     await waitFor(() => container.querySelector('button.primary'));
     await fireEvent.click(container.querySelector<HTMLButtonElement>('button.primary')!);
     await waitFor(() => container.querySelector('input.modal-input'));
@@ -469,9 +476,7 @@ describe('Toolbar — stash', () => {
   it('stash button calls modalStore.openStashSave', async () => {
     const openStashSave = vi.spyOn(modalStore, 'openStashSave');
     const { container } = render(Toolbar);
-    // Stash is the 5th toolbar-btn: [refresh, fetch, pull, push, stash, flow]
-    const btns = container.querySelectorAll<HTMLButtonElement>('.toolbar-btn');
-    await fireEvent.click(btns[4]);
+    await fireEvent.click(getStash(container));
     expect(openStashSave).toHaveBeenCalled();
   });
 });

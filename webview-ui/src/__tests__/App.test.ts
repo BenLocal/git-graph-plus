@@ -667,8 +667,9 @@ describe('App — Toolbar refresh action', () => {
   it('toolbar refresh re-requests log, branches, repos with current filters', async () => {
     branchStore.remotes = [{ name: 'origin', fetchUrl: '', pushUrl: '' }];
     render(App);
-    // Find the toolbar refresh button (first toolbar-btn)
-    const refresh = document.querySelector<HTMLButtonElement>('.toolbar-btn');
+    // Find the toolbar refresh button by its icon (order-independent)
+    const refresh = document.querySelector<HTMLElement>('.toolbar-btn .codicon-refresh')
+      ?.closest<HTMLButtonElement>('.toolbar-btn');
     expect(refresh).not.toBeNull();
     globalThis.__postedMessages = [];
     await fireEvent.click(refresh!);
