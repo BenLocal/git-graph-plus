@@ -490,6 +490,29 @@ describe('GitService integration — merge / rebase / cherry-pick / revert', () 
       // The subject is overridden to the stash message.
       expect(stashRow?.subject).toContain('wip-stash-1');
     });
+
+    it('keeps a stash attached to the tree when its base branch was deleted (#52)', async () => {
+      // Shared root on main; feature branches off and adds its own commit.
+      commit(repo.path, 'init', { 'a.txt': 'one\n' });
+      runGit(repo.path, ['checkout', '-b', 'feature']);
+      const featureTip = commit(repo.path, 'feature work', { 'f.txt': 'f\n' });
+      // Stash on top of feature, then abandon feature so the stash base is no
+      // longer reachable from any branch/tag — only the stash ref points at it.
+      const { writeFileSync } = await import('fs');
+      writeFileSync(`${repo.path}/f.txt`, 'dirty\n');
+      await svc.stashSave('wip-on-feature');
+      runGit(repo.path, ['checkout', 'main']);
+      runGit(repo.path, ['branch', '-D', 'feature']);
+
+      const commits = await svc.log();
+      const hashes = new Set(commits.map(c => c.hash));
+      const stashRow = commits.find(c => c.refs.some(r => r.type === 'stash'));
+      expect(stashRow).toBeDefined();
+      // The stash must connect to the tree: its base commit (first parent) has
+      // to be present in the graph, otherwise the badge floats orphaned (#52).
+      expect(stashRow?.parents[0]).toBe(featureTip);
+      expect(hashes.has(featureTip)).toBe(true);
+    });
   });
 
   describe('interactiveRebase', () => {

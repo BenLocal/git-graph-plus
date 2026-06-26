@@ -425,10 +425,37 @@ export class GitService {
       args.push(options.branch);
     }
 
-    const [raw, remoteNames, stashes] = await Promise.all([
+    // Resolve stashes before running the log: their base commits may need to be
+    // added as extra walk start points (below). stashList() is deduped/cached,
+    // so awaiting it here doesn't add a round-trip versus the old Promise.all.
+    const stashes = await this.stashList();
+
+    // Include each stash's base commit as an extra rev-list start point so git
+    // walks the stash's ancestry down to where it rejoins the main history.
+    // Without this, a stash whose original branch was rebased or deleted has a
+    // base commit that's unreachable from any branch/tag, so it floats orphaned
+    // instead of attaching to the tree (#52). Restrict this to the unfiltered
+    // first page: with branch/remote filters or pagination the extra ancestry
+    // would leak commits outside the requested scope.
+    if (
+      !options?.skip &&
+      !options?.branch &&
+      (!options?.branches || options.branches.length === 0) &&
+      (!options?.remoteFilter || options.remoteFilter.length === 0)
+    ) {
+      const seen = new Set<string>();
+      for (const s of stashes) {
+        const base = s.parentHash;
+        if (base && /^[0-9a-f]{7,64}$/i.test(base) && !seen.has(base)) {
+          seen.add(base);
+          args.push(base);
+        }
+      }
+    }
+
+    const [raw, remoteNames] = await Promise.all([
       this.exec(args),
       this.getRemoteNames(),
-      this.stashList(),
     ]);
     const commits = parseLog(raw, remoteNames);
 
