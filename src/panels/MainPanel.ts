@@ -5,7 +5,7 @@ import { GitService, GitError } from '../git/git-service';
 import { formatGitError, isAuthFailure, transportFromRemoteUrl } from '../git/git-error-formatter';
 import { splitUpstreamRef } from '../git/git-parser';
 import { samePath } from '../utils/path';
-import { readTimeoutMs } from '../utils/config';
+import { readTimeoutMs, readInitialCommitCount, readLoadMoreCommitCount } from '../utils/config';
 import { buildFullGraph } from '../git/git-graph-builder';
 import { compileBranchColorRules, makeBranchColorResolver } from '../git/branch-color-resolver';
 import { resolveGraphColors } from '../git/graph-colors';
@@ -219,6 +219,9 @@ export class MainPanel {
         if (e.affectsConfiguration('gitGraphPlus.branchBadgeBarThickness')) {
           this.post({ type: 'setBadgeBarThickness', payload: { width: this.readBadgeBarWidth() } });
         }
+        if (e.affectsConfiguration('gitGraphPlus.loadMoreCommitCount')) {
+          this.post({ type: 'setLoadMoreCount', payload: { count: readLoadMoreCommitCount() } });
+        }
         if (e.affectsConfiguration('gitGraphPlus.branchColors')) {
           this.refreshAll();
         }
@@ -247,6 +250,7 @@ export class MainPanel {
     this.post({ type: 'setDefaults', payload: this.readModalDefaults() });
     this.post({ type: 'setBadgeBarThickness', payload: { width: this.readBadgeBarWidth() } });
     this.post({ type: 'setGraphColors', payload: { colors: this.readGraphColors() } });
+    this.post({ type: 'setLoadMoreCount', payload: { count: readLoadMoreCommitCount() } });
     void this.postCommitLinkRules();
 
     this.panel.webview.onDidReceiveMessage(
@@ -385,7 +389,7 @@ export class MainPanel {
           const cfg = vscode.workspace.getConfiguration('gitGraphPlus');
           const sortOrder = cfg.get<'author-date' | 'date' | 'topological'>('graphSortOrder', 'topological');
           const includeSignature = cfg.get<boolean>('showSignatureStatus', true);
-          const requestedLimit = message.payload.limit ?? 1000;
+          const requestedLimit = message.payload.limit ?? readInitialCommitCount();
           this.currentLimit = requestedLimit;
           // On first load, apply saved filter if the webview didn't specify one.
           const effectiveFilter = this.isFirstGetLog && message.payload.remoteFilter === undefined
@@ -1698,7 +1702,7 @@ export class MainPanel {
       const refreshCfg = vscode.workspace.getConfiguration('gitGraphPlus');
       const sortOrder = refreshCfg.get<'author-date' | 'date' | 'topological'>('graphSortOrder', 'topological');
       const includeSignature = refreshCfg.get<boolean>('showSignatureStatus', true);
-      const refreshLimit = this.currentLimit || 1000;
+      const refreshLimit = this.currentLimit || readInitialCommitCount();
       // Until the webview's first getLog establishes this session's filter,
       // mirror the saved filter that getLog will apply (same logic as the
       // getLog handler). Otherwise an early refresh — triggered by the file

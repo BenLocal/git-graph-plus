@@ -110,6 +110,9 @@ import AmendModal from './components/modals/AmendModal.svelte';
         case 'setBadgeBarThickness':
           uiStore.badgeBarWidth = msg.payload.width;
           break;
+        case 'setLoadMoreCount':
+          uiStore.loadMoreCount = msg.payload.count;
+          break;
         case 'setGraphColors':
           graphColorsStore.set(msg.payload.colors);
           break;

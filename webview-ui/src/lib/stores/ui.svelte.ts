@@ -21,6 +21,7 @@ class UiStore {
   homeDir = $state('');
   operating = $state<string | null>(null);
   badgeBarWidth = $state(4);
+  loadMoreCount = $state(50);
   private errorTimer: ReturnType<typeof setTimeout> | null = null;
 
   selectCommit(hash: string | null) {

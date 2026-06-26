@@ -397,6 +397,18 @@
           "minimum": 1,
           "markdownDescription": "Maximum time (in seconds) to wait for a Git command before it is aborted. Increase this if the graph times out while loading in a very large repository."
         },
+        "gitGraphPlus.initialCommitCount": {
+          "type": "integer",
+          "default": 200,
+          "minimum": 1,
+          "markdownDescription": "Number of commits loaded when the graph first renders (and on refresh). Lower this to speed up loading in very large repositories; raise it to see more history without clicking **Load more**."
+        },
+        "gitGraphPlus.loadMoreCommitCount": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 1,
+          "markdownDescription": "Number of additional commits fetched each time the **Load more commits** button is clicked."
+        },
         "gitGraphPlus.graphSortOrder": {
           "type": "string",
           "enum": [
