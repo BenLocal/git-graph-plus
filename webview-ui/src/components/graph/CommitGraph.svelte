@@ -16,6 +16,7 @@
   import RebaseBranchModal from '../modals/RebaseBranchModal.svelte';
   import CherryPickModal from '../modals/CherryPickModal.svelte';
   import RevertModal from '../modals/RevertModal.svelte';
+  import FixupModal from '../modals/FixupModal.svelte';
   import ResetModal from '../modals/ResetModal.svelte';
   import CheckoutCommitModal from '../modals/CheckoutCommitModal.svelte';
   import SquashModal from '../modals/SquashModal.svelte';
@@ -214,6 +215,9 @@
 
   let showRevertModal = $state(false);
   let revertTarget = $state('');
+
+  let showFixupModal = $state(false);
+  let fixupTarget = $state('');
 
   // Squash selected commits: the validated chain (oldest→newest) when open.
   let squashChain = $state<Commit[] | null>(null);
@@ -941,6 +945,16 @@
         },
         { label: t('graph.cherryPickCommit'), action: () => { cherryPickTarget = commit.hash; showCherryPickModal = true; } },
         { label: t('graph.revertCommit'),     action: () => { revertTarget = commit.hash; showRevertModal = true; } },
+        {
+          label: t('graph.commitFixup'),
+          action: () => {
+            fixupTarget = commit.hash;
+            showFixupModal = true;
+            // Open the SCM view so the user can stage changes before committing
+            // the fixup; the modal tracks the staged count live.
+            vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
+          },
+        },
         { label: t('graph.savePatch'),        action: () => vscode.postMessage({ type: 'saveCommitPatch', payload: { hash: commit.hash } }) },
       ]);
 
@@ -1531,7 +1545,7 @@
     x={contextMenu.x}
     y={contextMenu.y}
     items={contextMenu.items}
-    onClose={() => { contextMenu = null; if (!showRebaseModal && !showCherryPickModal && !showRevertModal && !showResetModal) contextMenuHash = null; }}
+    onClose={() => { contextMenu = null; if (!showRebaseModal && !showCherryPickModal && !showRevertModal && !showResetModal && !showFixupModal) contextMenuHash = null; }}
   />
 {/if}
 
@@ -1577,6 +1591,14 @@
     branch={branchStore.currentBranch?.name ?? 'current branch'}
     onClose={() => { showRevertModal = false; contextMenuHash = null; }}
     onRevert={({ noCommit, pushAfter }) => { showRevertModal = false; contextMenuHash = null; vscode.postMessage({ type: 'revert', payload: { commit: revertTarget, noCommit, pushAfter } }); }}
+  />
+{/if}
+
+{#if showFixupModal}
+  <FixupModal
+    commit={fixupTarget}
+    onClose={() => { showFixupModal = false; contextMenuHash = null; }}
+    onFixup={() => { showFixupModal = false; contextMenuHash = null; vscode.postMessage({ type: 'commitFixup', payload: { commit: fixupTarget } }); }}
   />
 {/if}
 

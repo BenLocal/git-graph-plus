@@ -163,6 +163,7 @@ export const zh: Record<string, string> = {
   'graph.checkoutCommit': '检出提交',
   'graph.cherryPickCommit': '遴选提交',
   'graph.revertCommit': '还原提交',
+  'graph.commitFixup': 'Commit Fixup',
   'graph.savePatch': '另存为补丁',
   'graph.compareToLocal': '与本地更改比较',
   'graph.copyShortSHA': '复制短 SHA',
@@ -384,6 +385,14 @@ export const zh: Record<string, string> = {
   'cherryPick.conflictWarning': 'Cherry-Pick 冲突 {count} 个文件',
   'cherryPick.noConflict': '无 Cherry-Pick 冲突',
   'cherryPick.cherryPick': '遴选',
+
+  // Fixup modal
+  'fixup.title': 'Commit Fixup',
+  'fixup.desc': '将已暂存的更改作为所选提交的 fixup 提交。',
+  'fixup.checkingStaged': '正在检查已暂存更改',
+  'fixup.stagedNone': '无已暂存更改',
+  'fixup.stagedIncluded': '已暂存 {count} 个',
+  'fixup.fixup': 'Commit Fixup',
 
   // Revert modal
   'revert.title': '还原提交',

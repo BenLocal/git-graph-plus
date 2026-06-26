@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { GitService } from '../../git-service';
-import { TempRepo, commit, createTempRepo, currentBranch, head, runGit, seedBranches } from './helpers';
+import { TempRepo, commit, createTempRepo, currentBranch, head, runGit, seedBranches, writeFile } from './helpers';
 
 describe('GitService integration — merge / rebase / cherry-pick / revert', () => {
   let repo: TempRepo;
@@ -216,6 +216,24 @@ describe('GitService integration — merge / rebase / cherry-pick / revert', () 
 
       await svc.abortOperation();
       expect((await svc.getOperationState()).type).toBeNull();
+    });
+  });
+
+  describe('commitFixup', () => {
+    it('commits staged changes as a fixup! of the target commit', async () => {
+      commit(repo.path, 'init', { 'a.txt': 'one\n' });
+      const target = commit(repo.path, 'add feature', { 'feat.txt': 'x\n' });
+      commit(repo.path, 'later work', { 'b.txt': 'b\n' });
+
+      // Stage a change to fold into the target later.
+      writeFile(repo.path, 'feat.txt', 'x\ny\n');
+      runGit(repo.path, ['add', '-A']);
+
+      await svc.commitFixup(target);
+
+      // A new commit is created on top, with the conventional fixup! subject.
+      const subject = runGit(repo.path, ['log', '-1', '--format=%s']).trim();
+      expect(subject).toBe('fixup! add feature');
     });
   });
 

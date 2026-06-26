@@ -1067,6 +1067,13 @@ export class MainPanel {
           await this.refreshAll();
           break;
         }
+        case 'commitFixup': {
+          await this.gitService.commitFixup(message.payload.commit);
+          this.post({ type: 'operationComplete', payload: { operation: 'commitFixup', success: true } });
+          vscode.window.showInformationMessage(vscode.l10n.t('committedFixup', message.payload.commit.substring(0, 7)));
+          await this.refreshAll();
+          break;
+        }
         case 'createTag': {
           await this.gitService.createTag(message.payload.name, message.payload.ref, message.payload.message);
           this.post({ type: 'operationComplete', payload: { operation: 'createTag', success: true } });
