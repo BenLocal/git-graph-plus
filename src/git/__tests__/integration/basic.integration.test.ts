@@ -178,6 +178,19 @@ describe('GitService integration — basic queries', () => {
       expect(result.unstaged.map(s => s.path)).toContain('b.txt');
     });
 
+    it('returns non-ASCII paths literally (core.quotePath=false)', async () => {
+      // With git's default core.quotePath=true the path would come back
+      // dquote-escaped ("\355\225\234...") and never match the literal name
+      // the diff view resolves, so the file would be unclickable.
+      commit(repo.path, 'init', { 'a.txt': 'a\n' });
+      const { writeFileSync } = await import('fs');
+      writeFileSync(`${repo.path}/한글.txt`, 'korean\n');
+
+      const result = await svc.getUncommittedDiff();
+      const paths = [...result.staged, ...result.unstaged].map(s => s.path);
+      expect(paths).toContain('한글.txt');
+    });
+
     it('marks an untracked nested git repo with status N (not a plain untracked)', async () => {
       commit(repo.path, 'init', { 'a.txt': 'a\n' });
       // A nested repo git refuses to descend into surfaces as one dir entry

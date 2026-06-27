@@ -322,8 +322,17 @@ export class GitService {
     const timeoutMs = options?.timeout ?? this.defaultTimeoutMs;
     const maxBytes = options?.maxBufferBytes ?? DEFAULT_MAX_BUFFER_BYTES;
 
+    // Force literal UTF-8 pathnames in every command's output. With the
+    // default core.quotePath=true, git dquote-escapes non-ASCII paths (e.g.
+    // "\355\225\234.txt"), which left the file list (status/name-status/
+    // ls-tree) showing escaped paths while the diff view unescaped them — so
+    // clicking a non-ASCII (Korean, etc.) file opened no diff. Applied as a
+    // `-c` override so it's global, but kept out of the activity-log command
+    // string to avoid clutter.
+    const spawnArgs = ['-c', 'core.quotePath=false', ...args];
+
     return new Promise((resolve, reject) => {
-      const proc = spawn(getGitBinaryPath(), args, {
+      const proc = spawn(getGitBinaryPath(), spawnArgs, {
         cwd: this.repoPath,
         env: { ...process.env, ...this.extraEnv, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C', GIT_MERGE_AUTOEDIT: 'no', GIT_EDITOR: 'true', EDITOR: 'true' },
       });
