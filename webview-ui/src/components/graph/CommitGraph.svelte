@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { commitStore } from '../../lib/stores/commits.svelte';
   import { branchStore } from '../../lib/stores/branches.svelte';
   import { uiStore } from '../../lib/stores/ui.svelte';
@@ -25,6 +26,10 @@
   import type { Commit, CommitGraphData } from '../../lib/types';
   import { tooltip } from '../../lib/actions/tooltip';
   import { getSquashChain } from '../../lib/utils/squash';
+  import { chainBranches } from '../../lib/utils/branchChain';
+  import RebaseTargetModal from '../modals/RebaseTargetModal.svelte';
+  import DirtyActionModal from '../modals/DirtyActionModal.svelte';
+  import type { DirtyPayload } from '../../lib/utils/dirty-payload';
   import { resolveDrop, dragRebaseMessage, dragMergeMessage } from '../../lib/utils/dragDrop';
   import { computeNavigationTarget, computeScrollTop, computeJumpTarget, isRowOffscreen, type ScrollAlign } from '../../lib/graph-navigation';
   import LinkifiedText from '../common/LinkifiedText.svelte';
@@ -225,6 +230,15 @@
   let squashChain = $state<Commit[] | null>(null);
   // Multi cherry-pick: the selected hashes (oldest→newest) when the modal is open.
   let multiCherryPickTargets = $state<string[] | null>(null);
+
+  // Interactive-rebase-from-selection state.
+  // rebaseTargetBranches: candidates for the branch+dirty modal (branch pick needed).
+  // rebaseDirtyBranch: target branch when only dirty handling is needed (current-branch path).
+  // pendingRebaseBase: rebase base held across the checkout round-trip until the editor opens.
+  let rebaseTargetBranches = $state<string[] | null>(null);
+  let rebaseDirtyBranch = $state<string | null>(null);
+  let pendingRebaseBase = $state<string | null>(null);
+  let dragDirty = $state<{ op: 'rebase' | 'merge'; source: string; target: string } | null>(null);
 
   let showCheckoutCommitModal = $state(false);
   let checkoutCommitHash = $state('');
@@ -639,30 +653,86 @@
     dragOverBranch = null;
     if (!source) return;
     const localNames = new Set(localBranchMap.keys());
-    const hasUncommitted = commitStore.commits.some(c => c.hash === 'UNCOMMITTED');
-    const res = resolveDrop(source, targetBranch, localNames, hasUncommitted);
+    const res = resolveDrop(source, targetBranch, localNames);
     if (res.kind === 'ignore') return;
-    if (res.kind === 'blocked') {
-      vscode.postMessage({ type: 'showNotification', payload: { message: t('graph.dragDropUncommitted') } });
-      return;
-    }
+    const hasUncommitted = commitStore.commits.some(c => c.hash === 'UNCOMMITTED');
     contextMenu = {
       x: e.clientX,
       y: e.clientY,
       items: [
         {
           label: t('graph.dragRebaseOnto', { source: res.source, target: res.target }),
-          action: () => { vscode.postMessage(dragRebaseMessage(res.source, res.target)); },
+          action: () => { runDrag('rebase', res.source, res.target, hasUncommitted); },
         },
         {
           label: t('graph.dragMergeInto', { source: res.source, target: res.target }),
-          action: () => { vscode.postMessage(dragMergeMessage(res.source, res.target)); },
+          action: () => { runDrag('merge', res.source, res.target, hasUncommitted); },
         },
         { separator: true, label: '', action: () => {} },
         { label: t('graph.cancelSelection'), action: () => {} },
       ],
     };
   }
+
+  // Clean tree → post the drag op directly. Dirty → collect the stash/keep/discard
+  // choice via DirtyActionModal first, then post with that payload.
+  function runDrag(op: 'rebase' | 'merge', source: string, target: string, dirty: boolean) {
+    if (dirty) {
+      dragDirty = { op, source, target };
+    } else if (op === 'rebase') {
+      vscode.postMessage(dragRebaseMessage(source, target));
+    } else {
+      vscode.postMessage(dragMergeMessage(source, target));
+    }
+  }
+
+  // Entry for "Interactive Rebase selected commits". `chain` is oldest→newest
+  // (getSquashChain); base = parent of the oldest selected commit.
+  function startSelectionRebase(chain: Commit[], candidates: string[]) {
+    const base = chain[0].parents[0];
+    const current = branchStore.currentBranch?.name;
+    if (candidates.length === 1 && candidates[0] === current) {
+      // No branch switch needed. Clean → open the editor directly. Dirty → let the
+      // user stash/keep/discard first (checkout to the current branch applies the
+      // stash before a no-op switch).
+      const hasUncommitted = commitStore.commits.some(c => c.hash === 'UNCOMMITTED');
+      if (!hasUncommitted) {
+        interactiveRebaseBase = base;
+        uiStore.exitMultiSelect();
+        contextMenuHash = null;
+      } else {
+        pendingRebaseBase = base;
+        rebaseDirtyBranch = current ?? null;
+      }
+    } else {
+      pendingRebaseBase = base;
+      rebaseTargetBranches = candidates;
+    }
+  }
+
+  // After the target branch is checked out (with any stash), HEAD is the branch
+  // tip; open the editor with the held base so getRebaseCommits(base)→base..HEAD
+  // resolves correctly.
+  onMount(() => {
+    function handleCheckoutForRebase(event: MessageEvent) {
+      const msg = event.data;
+      if (!pendingRebaseBase) { return; }
+      if (msg?.type === 'operationComplete' && msg.payload?.operation === 'checkout') {
+        interactiveRebaseBase = pendingRebaseBase;
+        pendingRebaseBase = null;
+        uiStore.exitMultiSelect();
+        contextMenuHash = null;
+      } else if (msg?.type === 'error') {
+        // Checkout failed — drop the pending rebase so a later unrelated checkout
+        // does not wrongly reopen the editor.
+        pendingRebaseBase = null;
+        uiStore.exitMultiSelect();
+        contextMenuHash = null;
+      }
+    }
+    window.addEventListener('message', handleCheckoutForRebase);
+    return () => window.removeEventListener('message', handleCheckoutForRebase);
+  });
 
   function onCommitContextMenu(e: MouseEvent, commit: Commit) {
     e.preventDefault();
@@ -698,6 +768,27 @@
           label: t('graph.squashCommits', { count: String(chain.length) }),
           action: () => { squashChain = chain; },
         });
+        const head = chain[chain.length - 1].hash;
+        // BranchInfo.hash is the abbreviated object name; commitMap is keyed by
+        // the full hash. Resolve each local branch tip to its full hash so the
+        // first-parent walk can start, falling back to the abbreviated value
+        // (no match) when the tip is outside the loaded commit range.
+        const fullByAbbrev = new Map(commitStore.commits.map(c => [c.abbreviatedHash, c.hash]));
+        const localBranchTips = branchStore.localBranches.map(b => ({
+          name: b.name,
+          hash: fullByAbbrev.get(b.hash) ?? b.hash,
+        }));
+        const candidates = chainBranches(
+          head,
+          commitStore.commitMap as Map<string, Commit>,
+          localBranchTips,
+        );
+        if (candidates.length >= 1) {
+          multiItems.push({
+            label: t('graph.interactiveRebaseSelection', { count: String(chain.length) }),
+            action: () => { startSelectionRebase(chain, candidates); },
+          });
+        }
       }
       multiItems.push({
         label: t('graph.cherryPickCommits', { count: String(sel.length) }),
@@ -1602,6 +1693,61 @@
     branchName={branchStore.currentBranch?.name ?? 'HEAD'}
     baseSubject={commitStore.getCommit(interactiveRebaseBase)?.subject ?? ''}
     onClose={() => { interactiveRebaseBase = null; }}
+  />
+{/if}
+
+{#if rebaseTargetBranches}
+  <RebaseTargetModal
+    branches={rebaseTargetBranches}
+    currentBranch={branchStore.currentBranch?.name ?? ''}
+    base={pendingRebaseBase ?? ''}
+    onConfirm={(branch, dirty) => {
+      rebaseTargetBranches = null;
+      vscode.postMessage({ type: 'checkout', payload: { ref: branch, ...dirty } });
+    }}
+    onClose={() => {
+      if (rebaseTargetBranches) {
+        rebaseTargetBranches = null;
+        pendingRebaseBase = null;
+        uiStore.exitMultiSelect();
+        contextMenuHash = null;
+      }
+    }}
+  />
+{/if}
+
+{#if rebaseDirtyBranch}
+  <DirtyActionModal
+    title={t('dirtyAction.title')}
+    confirmLabel={t('dirtyAction.continue')}
+    onConfirm={(dirty: DirtyPayload) => {
+      const branch = rebaseDirtyBranch!;
+      rebaseDirtyBranch = null;
+      vscode.postMessage({ type: 'checkout', payload: { ref: branch, ...dirty } });
+    }}
+    onClose={() => {
+      if (rebaseDirtyBranch) {
+        rebaseDirtyBranch = null;
+        pendingRebaseBase = null;
+        uiStore.exitMultiSelect();
+        contextMenuHash = null;
+      }
+    }}
+  />
+{/if}
+
+{#if dragDirty}
+  <DirtyActionModal
+    title={t('dirtyAction.title')}
+    confirmLabel={t('dirtyAction.continue')}
+    onConfirm={(dirty) => {
+      const d = dragDirty!;
+      dragDirty = null;
+      vscode.postMessage(d.op === 'rebase'
+        ? dragRebaseMessage(d.source, d.target, dirty)
+        : dragMergeMessage(d.source, d.target, dirty));
+    }}
+    onClose={() => { dragDirty = null; }}
   />
 {/if}
 

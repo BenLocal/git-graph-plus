@@ -264,4 +264,62 @@ describe('CommitGraph signature icon', () => {
     await tick();
     expect(container.querySelector('.sig-icon')).toBeFalsy();
   });
+
+  it('shows "Interactive Rebase selected commits" for a contiguous chain on a non-current branch', async () => {
+    const head = makeCommit('h1', 'main tip');
+    head.refs = [{ type: 'head', name: 'main' }];
+    const f1 = makeCommit('f1', 'feature 1', ['h1']);
+    const f2 = makeCommit('f2', 'feature 2', ['f1']);
+    f2.refs = [{ type: 'branch', name: 'feature' }];
+    commitStore.setData(makeGraphData([f2, f1, head]));
+    branchStore.branches = [
+      { name: 'main', current: true, ahead: 0, behind: 0, hash: 'h1' },
+      { name: 'feature', current: false, ahead: 0, behind: 0, hash: 'f2' },
+    ];
+    uiStore.multiSelectArmed = true;
+    uiStore.selectedCommitHashes = ['f1', 'f2'];
+
+    const { container } = render(CommitGraph, {});
+    await tick();
+    const row = container.querySelectorAll<HTMLElement>('.commit-row')[0]; // f2 row
+    await fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+    await tick();
+
+    const item = Array.from(container.querySelectorAll<HTMLElement>('*'))
+      .find(el => el.children.length === 0 && /^interactive rebase \d+ commits$/i.test((el.textContent ?? '').trim()));
+    expect(item).toBeTruthy();
+
+    uiStore.exitMultiSelect();
+  });
+
+  it('resolves candidate branches when BranchInfo.hash is abbreviated (not the full commit hash)', async () => {
+    // Regression: branch tips come from git as %(objectname:short), but commitMap
+    // is keyed by the full hash. The menu item must still appear.
+    const head = makeCommit('mainfull1234', 'main tip');
+    head.refs = [{ type: 'head', name: 'main' }];
+    const f1 = makeCommit('feat1full5678', 'feature 1', ['mainfull1234']);
+    const f2 = makeCommit('feat2full9012', 'feature 2', ['feat1full5678']);
+    f2.refs = [{ type: 'branch', name: 'feature' }];
+    commitStore.setData(makeGraphData([f2, f1, head]));
+    // abbreviated tips (commit.abbreviatedHash === hash.slice(0,7)), which differ
+    // from the full commit hashes the commitMap is keyed by.
+    branchStore.branches = [
+      { name: 'main', current: true, ahead: 0, behind: 0, hash: 'mainful' },
+      { name: 'feature', current: false, ahead: 0, behind: 0, hash: 'feat2fu' },
+    ];
+    uiStore.multiSelectArmed = true;
+    uiStore.selectedCommitHashes = ['feat1full5678', 'feat2full9012'];
+
+    const { container } = render(CommitGraph, {});
+    await tick();
+    const row = container.querySelectorAll<HTMLElement>('.commit-row')[0]; // f2 row
+    await fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+    await tick();
+
+    const item = Array.from(container.querySelectorAll<HTMLElement>('*'))
+      .find(el => el.children.length === 0 && /^interactive rebase \d+ commits$/i.test((el.textContent ?? '').trim()));
+    expect(item).toBeTruthy();
+
+    uiStore.exitMultiSelect();
+  });
 });

@@ -60,8 +60,8 @@ export type WebviewMessage =
   | { type: 'revert'; payload: { commit: string; noCommit?: boolean; pushAfter?: boolean } }
   | { type: 'commitFixup'; payload: { commit: string } }
   | { type: 'reverseCommitChanges'; payload: { commit: string; file: string; hunkIndex?: number; lineIndices?: number[] } }
-  | { type: 'dragRebase'; payload: { source: string; target: string } }
-  | { type: 'dragMerge'; payload: { source: string; target: string } }
+  | { type: 'dragRebase'; payload: { source: string; target: string; force?: boolean; merge?: boolean; stash?: boolean; stashUntracked?: boolean; clean?: boolean } }
+  | { type: 'dragMerge'; payload: { source: string; target: string; force?: boolean; merge?: boolean; stash?: boolean; stashUntracked?: boolean; clean?: boolean } }
   | { type: 'addRemote'; payload: { name: string; url: string } }
   | { type: 'removeRemote'; payload: { name: string } }
   | { type: 'openDiff'; payload: { file: string; commitHash?: string; ref1?: string; ref2?: string; staged?: boolean } }

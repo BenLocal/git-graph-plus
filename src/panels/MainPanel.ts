@@ -871,9 +871,15 @@ export class MainPanel {
           // Drag A onto B = rebase A onto B, leaving A current. Check out the
           // source directly (not via the checkout message) so no "Checked out"
           // notification fires — only the rebase result is announced.
+          if (message.payload.stash) {
+            await this.gitService.stashSave('Auto-stash before checkout', message.payload.stashUntracked);
+          }
+          if (message.payload.clean) {
+            await this.gitService.clean();
+          }
           const dragCurrent = (await this.gitService.branches()).find(b => b.current)?.name;
           if (dragCurrent !== message.payload.source) {
-            await this.gitService.checkout(message.payload.source);
+            await this.gitService.checkout(message.payload.source, { force: message.payload.force, merge: message.payload.merge });
           }
           await this.gitService.rebase(message.payload.target);
           this.post({ type: 'operationComplete', payload: { operation: 'rebase', success: true } });
@@ -886,9 +892,15 @@ export class MainPanel {
         case 'dragMerge': {
           // Drag A onto B = merge A into B (always --no-ff), leaving B current.
           // Check out the target directly so no "Checked out" notification fires.
+          if (message.payload.stash) {
+            await this.gitService.stashSave('Auto-stash before checkout', message.payload.stashUntracked);
+          }
+          if (message.payload.clean) {
+            await this.gitService.clean();
+          }
           const mergeCurrent = (await this.gitService.branches()).find(b => b.current)?.name;
           if (mergeCurrent !== message.payload.target) {
-            await this.gitService.checkout(message.payload.target);
+            await this.gitService.checkout(message.payload.target, { force: message.payload.force, merge: message.payload.merge });
           }
           await this.gitService.merge(message.payload.source, { noFf: true });
           this.post({ type: 'operationComplete', payload: { operation: 'merge', success: true } });
