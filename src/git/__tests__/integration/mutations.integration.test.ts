@@ -282,6 +282,24 @@ describe('GitService integration — state mutations', () => {
       expect(stashes[0].message).toContain('renamed message');
     });
 
+    it('stashRename of a lower (non-top) stash renames the right one without losing others', async () => {
+      // Two stashes: stash@{0}=second, stash@{1}=first. Renaming index 1 must
+      // hit the older entry and keep the count at 2 (regression guard for the
+      // store-prepend index shift).
+      await dirtyTheTree();
+      await svc.stashSave('first');
+      writeFileSync(join(repo.path, 'a.txt'), 'three\n');
+      await svc.stashSave('second');
+
+      await svc.stashRename(1, 'first renamed');
+
+      const stashes = await svc.stashList();
+      expect(stashes.length).toBe(2);
+      expect(stashes.map(s => s.message).join('\n')).toContain('first renamed');
+      expect(stashes.map(s => s.message).join('\n')).toContain('second');
+      expect(stashes.map(s => s.message).join('\n')).not.toContain('first\n');
+    });
+
     it('stashRename rejects a negative or non-integer index before touching git', async () => {
       await expect(svc.stashRename(-1, 'x')).rejects.toThrow('Invalid stash index');
       await expect(svc.stashRename(1.5, 'x')).rejects.toThrow('Invalid stash index');

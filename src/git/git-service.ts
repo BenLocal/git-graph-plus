@@ -1772,9 +1772,23 @@ export class GitService {
 
   async stashRename(index: number, newMessage: string): Promise<void> {
     if (!Number.isInteger(index) || index < 0) throw new Error('Invalid stash index');
-    const sha = (await this.exec(['rev-parse', `stash@{${index}}`])).trim();
-    await this.exec(['stash', 'drop', `stash@{${index}}`]);
-    await this.exec(['stash', 'store', '-m', newMessage, sha]);
+    const ref = `stash@{${index}}`;
+    const sha = (await this.exec(['rev-parse', ref])).trim();
+    // Renaming a stash means re-storing the same commit under a new reflog
+    // subject; `stash store` only prepends a fresh entry when the stored sha
+    // differs from the current tip, so it must come *after* the drop (storing
+    // the tip's own sha is a no-op and would leave the name unchanged).
+    // Capture the original subject first so that if `store` fails after the
+    // drop, we can put the stash back instead of stranding it as a dangling
+    // commit (the data-loss window of an unguarded drop-then-store).
+    const original = (await this.exec(['log', '-1', '--format=%s', sha])).trim();
+    await this.exec(['stash', 'drop', ref]);
+    try {
+      await this.exec(['stash', 'store', '-m', newMessage, sha]);
+    } catch (err) {
+      await this.exec(['stash', 'store', '-m', original, sha]).catch(() => { /* best effort */ });
+      throw err;
+    }
   }
 
   async stashRestoreFiles(index: number, paths: string[]): Promise<void> {
