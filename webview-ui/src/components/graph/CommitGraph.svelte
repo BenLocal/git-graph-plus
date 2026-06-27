@@ -515,15 +515,6 @@
   // so slicing by [startIndex, endIndex) is equivalent to the previous y-range filter.
   let visibleDots = $derived(displayDots.slice(startIndex, endIndex));
 
-  // Hash → commit lookup map
-  let commitMap = $derived.by(() => {
-    const map = new Map<string, typeof displayCommits[0]>();
-    for (const c of displayCommits) {
-      map.set(c.hash, c);
-    }
-    return map;
-  });
-
   function laneX(col: number): number {
     return col * X_SCALE;
   }

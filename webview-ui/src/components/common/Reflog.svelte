@@ -40,7 +40,6 @@
   // ── 검색 ────────────────────────────────────────────────
   let query         = $state('');
   let inputEl: HTMLInputElement | undefined = $state();
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // ── 필터 ────────────────────────────────────────────────
   let refOpen          = $state(false);
@@ -181,12 +180,6 @@
     return () => window.removeEventListener('message', handleMessage);
   });
 
-  // ── 검색 ────────────────────────────────────────────────
-  function onInput() {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {}, 0); // filteredEntries is reactive
-  }
-
   function clearSearch() {
     query = '';
     inputEl?.focus();
@@ -240,7 +233,6 @@
       type="text"
       bind:this={inputEl}
       bind:value={query}
-      oninput={onInput}
       placeholder={t('reflog.searchPlaceholder')}
     />
     {#if query || actionActive || danglingOnly}
