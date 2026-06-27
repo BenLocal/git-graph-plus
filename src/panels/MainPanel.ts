@@ -1660,8 +1660,9 @@ export class MainPanel {
     const fileUri = vscode.Uri.file(fullPath);
 
     if (commitHash) {
-      // Commit diff: parent vs commit
-      const parentRef = commitHash + '~1';
+      // Commit diff: parent vs commit. Resolve the parent to a full SHA — the
+      // `<sha>~1` shorthand isn't understood by markdown-diff tooling (#51).
+      const parentRef = await this.gitService.resolveDiffBaseRef(commitHash);
       const leftUri = this.toGitUri(fullPath, parentRef);
       const rightUri = this.toGitUri(fullPath, commitHash);
       const title = `${file} (${commitHash.substring(0, 7)})`;

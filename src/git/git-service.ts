@@ -177,6 +177,33 @@ export class GitService {
 
   get rootPath(): string { return this.repoPath; }
 
+  // The empty tree object, keyed by the repo's hash algorithm. Used as the diff
+  // base for root commits (no parent) so the diff renders the file as fully added.
+  private static readonly EMPTY_TREE: Record<string, string> = {
+    sha1: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+    sha256: '6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321',
+  };
+
+  /**
+   * Resolves the base revision a single-commit diff compares against — the
+   * commit's first parent — to a full SHA. Markdown-diff tooling (mddiff and
+   * similar) can't parse the `<sha>~1` shorthand and so can't tell which
+   * revisions a diff compares (#51); it needs a plain object name. Root commits
+   * have no parent, so we return the empty tree object instead.
+   */
+  async resolveDiffBaseRef(commitHash: string): Promise<string> {
+    this.assertSafeRef(commitHash, 'resolveDiffBaseRef');
+    try {
+      const parent = (await this.exec(['rev-parse', '--verify', '--quiet', `${commitHash}~1`], { silent: true })).trim();
+      if (parent) return parent;
+    } catch {
+      // `--quiet` exits non-zero with no output when the parent doesn't exist
+      // (root commit) — fall through to the empty tree.
+    }
+    const format = (await this.exec(['rev-parse', '--show-object-format'], { silent: true })).trim();
+    return GitService.EMPTY_TREE[format] ?? GitService.EMPTY_TREE.sha1;
+  }
+
   /**
    * The real gitdir. In a submodule or linked worktree `.git` is a file
    * pointing at it, so build gitdir paths from here, not by joining `'.git'`.

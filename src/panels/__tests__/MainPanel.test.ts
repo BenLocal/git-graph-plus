@@ -17,6 +17,7 @@ const H = vi.hoisted(() => {
     stashPop: vi.fn(async () => {}),
     showCommitDiff: vi.fn(async () => []),
     showCommitFiles: vi.fn(async () => []),
+    resolveDiffBaseRef: vi.fn(async () => 'parentsha'),
     getConflictFiles: vi.fn(async () => []),
     getOperationState: vi.fn(async () => ({ type: null })),
     getRemoteUrl: vi.fn(async () => ''),
@@ -78,7 +79,7 @@ vi.mock('vscode', () => {
     env: { language: 'en', clipboard: { writeText: vi.fn() } },
     Uri: {
       joinPath: () => ({}),
-      file: (p: string) => ({ fsPath: p }),
+      file: (p: string) => ({ fsPath: p, with(o: object) { return { ...this, ...o }; } }),
       parse: () => ({ with: () => ({}) }),
     },
     ViewColumn: { One: 1 },
@@ -163,6 +164,22 @@ describe('MainPanel message routing', () => {
     const data = postedOfType('logData').at(-1)!;
     expect(data.payload!.hasMore).toBe(true);
     expect((data.payload!.commits as unknown[]).length).toBe(1);
+  });
+
+  it('openDiff for a commit builds the left URI from the resolved parent SHA, not the ~1 shorthand', async () => {
+    const vscode = await import('vscode');
+    H.git.resolveDiffBaseRef.mockResolvedValue('1111111111111111111111111111111111111111');
+
+    await dispatch({ type: 'openDiff', payload: { file: 'doc.md', commitHash: '2222222' } });
+
+    expect(H.git.resolveDiffBaseRef).toHaveBeenCalledWith('2222222');
+    const diffCall = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(c => c[0] === 'vscode.diff')!;
+    expect(diffCall).toBeDefined();
+    const leftUri = diffCall[1] as { query: string };
+    const leftRef = JSON.parse(leftUri.query).ref;
+    expect(leftRef).toBe('1111111111111111111111111111111111111111');
+    expect(leftRef).not.toContain('~1');
   });
 
   it('getBranches posts branchData with all the sidebar collections', async () => {
