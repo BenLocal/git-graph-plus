@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.7.1 (2026-06-27)
+
+### Performance
+- **Leaner Refreshes** - Editing files now triggers a log-only partial refresh instead of reloading branches, tags, remotes, stashes, and worktrees, and the sidebar watcher no longer duplicates the graph panel's refresh work. A redundant full refresh on every file save was also removed (the file watcher already covers it, and refreshing now respects the `autoRefresh` setting).
+- **Smoother Graph Scrolling** - Scroll handling is coalesced to one update per frame, removing jank when scrolling large graphs on high-refresh displays.
+- **Faster Search** - Search precomputes per-commit text once, so each keystroke no longer rebuilds the entire search haystack.
+- **Lighter Diff & Stats Rendering** - The uncommitted staged/unstaged file trees are memoized instead of rebuilt on every interaction, syntax highlighting is bounded to the visible diff, the commit-activity heatmap uses O(1) cell lookups, and HEAD/branch lookups are memoized.
+
+### Bug Fixes
+- **Non-ASCII Filenames** - Files with Korean or other non-ASCII names now open their diff correctly instead of showing escaped, unclickable paths, and they are reported correctly in merge/rebase conflict prediction.
+- **Uncommitted Image Diff** - Images with uncommitted changes now show a proper before/after comparison instead of "No image".
+- **Stash Rename Safety** - If renaming a stash fails partway through, the stash is restored instead of being lost as a dangling commit.
+- **Multi-Commit Cherry-Pick** - Cherry-picking three or more selected commits no longer silently fails to dispatch.
+- **Interactive Rebase Squash Messages** - Reordering a squash group no longer discards a manually edited combined commit message.
+- **Amend Modal Escape** - Pressing Esc to close the Amend modal no longer also clears the current commit/file selection.
+- **Reset Modal** - A settings change while the Reset modal is open no longer resets the mode you just selected.
+- **Network Timeouts** - Fetch, pull, and push now run on a 10-minute timeout, so a large first fetch or a slow connection is no longer terminated at 60 seconds.
+- **Extension Stability** - A patch operation that git rejected early could crash the extension host (EPIPE); this is now handled safely. Diff-panel hover timers and a stale image-decode race when switching files quickly were also cleaned up.
+- **File Watcher Accuracy** - Sibling paths like `refspec` or `worktrees-backup` no longer trigger spurious graph refreshes.
+- **Sidebar Current Branch** - The sidebar reliably reveals the current branch after a refresh instead of occasionally acting on stale data.
+- **File Tree Icons** - Folder and file icons in the file-tree browser render as icons rather than literal text.
+- **Markdown Link Safety** - Non-http(s) link schemes in commit messages are no longer placed in the DOM, hardening middle-click and keyboard "open in new tab".
+- **Path & Error Handling** - File operations reject Windows absolute paths, deleting a tag reports every failing remote (not just the first), and a timed-out command is no longer double-logged.
+- **Graph Rendering** - Trailing branch lines at the bottom of the graph end straight down on their own lane instead of bending sideways.
+
 ## 0.7.0 (2026-06-27)
 
 ### New Features
