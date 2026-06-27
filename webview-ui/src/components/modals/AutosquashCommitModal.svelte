@@ -4,6 +4,7 @@
   import { t } from '../../lib/i18n/index.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
   import { getVsCodeApi } from '../../lib/vscode-api';
+  import { shortenRef } from '../../lib/utils/git-ref';
 
   interface Props {
     /** Whether to create a `fixup!` or `squash!` marker commit. */
@@ -17,8 +18,6 @@
   }
 
   let { mode, commit, subject, onClose, onConfirm }: Props = $props();
-
-  const shortHash = (h: string) => /^[0-9a-f]{40}$/i.test(h) ? h.substring(0, 7) : h;
 
   // The message git generates for `commit --fixup|--squash`: the target's subject
   // line prefixed with `fixup! ` / `squash! `. This mirrors git's behaviour for a
@@ -59,7 +58,7 @@
   <div class="modal-context-card">
     <span use:tooltip={commit} class="modal-pill modal-pill--target">
       <i class="codicon codicon-git-commit"></i>
-      <span class="modal-pill-text">{shortHash(commit)}</span>
+      <span class="modal-pill-text">{shortenRef(commit)}</span>
     </span>
   </div>
 

@@ -1,3 +1,15 @@
+/** True when `ref` looks like an (abbreviated or full) commit hash: 7-40 hex
+ *  chars. Used to pick a commit vs branch icon for a ref pill. */
+export function isCommitHash(ref: string): boolean {
+  return /^[0-9a-f]{7,40}$/i.test(ref);
+}
+
+/** Abbreviate a full 40-char hash to 7 chars; leave branch/tag names and
+ *  already-short refs untouched. */
+export function shortenRef(ref: string): string {
+  return /^[0-9a-f]{40}$/i.test(ref) ? ref.substring(0, 7) : ref;
+}
+
 /**
  * Validate a git ref name (branch, tag) against git's check-ref-format rules.
  * Returns null if valid, or an error key (i18n) if invalid.

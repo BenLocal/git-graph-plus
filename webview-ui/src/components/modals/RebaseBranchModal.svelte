@@ -6,6 +6,7 @@
   import { tooltip } from '../../lib/actions/tooltip';
   import { getVsCodeApi } from '../../lib/vscode-api';
   import { defaultsStore } from '../../lib/stores/defaults.svelte';
+  import { isCommitHash, shortenRef } from '../../lib/utils/git-ref';
 
   interface Props {
     branch: string;
@@ -17,8 +18,6 @@
   let { branch, onto, onClose, onRebase }: Props = $props();
   let autostash = $state(defaultsStore.current.rebase.autostash);
   let pushAfter = $state(defaultsStore.current.rebase.pushAfter);
-  const isHash = (ref: string) => /^[0-9a-f]{7,40}$/i.test(ref);
-  const shortRef = (ref: string) => /^[0-9a-f]{40}$/i.test(ref) ? ref.substring(0, 7) : ref;
   let rebaseBtn: HTMLButtonElement | undefined = $state();
 
   let conflictPrediction = $state<{ hasConflict: boolean; files: string[]; truncated?: boolean } | null>(null);
@@ -42,9 +41,9 @@
 <Modal title={t('rebaseBranch.title')} {onClose}>
   <p class="modal-desc">{t('rebaseBranch.desc')}</p>
   <div class="modal-context-card">
-    <span use:tooltip={shortRef(branch)} class="modal-pill modal-pill--target"><i class="codicon {isHash(branch) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortRef(branch)}</span></span>
+    <span use:tooltip={shortenRef(branch)} class="modal-pill modal-pill--target"><i class="codicon {isCommitHash(branch) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortenRef(branch)}</span></span>
     <i class="codicon codicon-arrow-right" style="color: var(--text-secondary);"></i>
-    <span use:tooltip={shortRef(onto)} class="modal-pill modal-pill--source"><i class="codicon {isHash(onto) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortRef(onto)}</span></span>
+    <span use:tooltip={shortenRef(onto)} class="modal-pill modal-pill--source"><i class="codicon {isCommitHash(onto) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortenRef(onto)}</span></span>
   </div>
   <div class="modal-form-group">
     <label class="modal-checkbox">

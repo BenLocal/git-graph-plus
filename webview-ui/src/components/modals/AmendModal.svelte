@@ -5,6 +5,7 @@
   import { tooltip } from '../../lib/actions/tooltip';
   import { getVsCodeApi } from '../../lib/vscode-api';
   import { defaultsStore } from '../../lib/stores/defaults.svelte';
+  import { shortenRef } from '../../lib/utils/git-ref';
 
   interface Props {
     hash: string;
@@ -28,7 +29,6 @@
   // initial prop value is intentional (untrack documents that to svelte-check).
   let editedMessage = $state(untrack(() => message));
 
-  const shortHash = (h: string) => /^[0-9a-f]{40}$/i.test(h) ? h.substring(0, 7) : h;
   const canAmend = $derived(keepMessage || editedMessage.trim().length > 0);
 
   // Live count of staged files (what an amend folds in). Refreshes whenever the
@@ -67,7 +67,7 @@
   <div class="modal-context-card">
     <span use:tooltip={hash} class="modal-pill modal-pill--target">
       <i class="codicon codicon-git-commit"></i>
-      <span class="modal-pill-text">{shortHash(hash)}</span>
+      <span class="modal-pill-text">{shortenRef(hash)}</span>
     </span>
   </div>
 

@@ -7,6 +7,7 @@
   import { tooltip } from '../../lib/actions/tooltip';
   import { getVsCodeApi } from '../../lib/vscode-api';
   import { defaultsStore } from '../../lib/stores/defaults.svelte';
+  import { isCommitHash, shortenRef } from '../../lib/utils/git-ref';
 
   interface Props {
     source: string;
@@ -20,8 +21,6 @@
   let mergeMode = $state<'default' | 'no-ff' | 'squash'>(defaultsStore.current.merge.mode);
   let pushAfter = $state(defaultsStore.current.merge.pushAfter);
   let deleteSource = $state(defaultsStore.current.merge.deleteSource);
-  const isHash = (ref: string) => /^[0-9a-f]{7,40}$/i.test(ref);
-  const shortRef = (ref: string) => /^[0-9a-f]{40}$/i.test(ref) ? ref.substring(0, 7) : ref;
   let mergeBtn: HTMLButtonElement | undefined = $state();
 
   let conflictPrediction = $state<{ hasConflict: boolean; files: string[] } | null>(null);
@@ -45,9 +44,9 @@
 <Modal title={t('merge.title')} {onClose}>
   <p class="modal-desc">{t('merge.desc')}</p>
   <div class="modal-context-card">
-    <span use:tooltip={shortRef(source)} class="modal-pill modal-pill--source"><i class="codicon {isHash(source) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortRef(source)}</span></span>
+    <span use:tooltip={shortenRef(source)} class="modal-pill modal-pill--source"><i class="codicon {isCommitHash(source) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortenRef(source)}</span></span>
     <i class="codicon codicon-arrow-right" style="color: var(--text-secondary);"></i>
-    <span use:tooltip={shortRef(target)} class="modal-pill modal-pill--target"><i class="codicon {isHash(target) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortRef(target)}</span></span>
+    <span use:tooltip={shortenRef(target)} class="modal-pill modal-pill--target"><i class="codicon {isCommitHash(target) ? 'codicon-git-commit' : 'codicon-git-branch'}"></i><span class="modal-pill-text">{shortenRef(target)}</span></span>
   </div>
   <div class="modal-form-group">
     <span class="modal-field-label">{t('merge.mergeType')}</span>

@@ -1,5 +1,30 @@
 import { describe, it, expect } from 'vitest';
-import { validateGitRefName } from '../git-ref';
+import { validateGitRefName, isCommitHash, shortenRef } from '../git-ref';
+
+describe('isCommitHash', () => {
+  it('accepts 7-40 hex char strings', () => {
+    expect(isCommitHash('abc1234')).toBe(true);
+    expect(isCommitHash('a'.repeat(40))).toBe(true);
+    expect(isCommitHash('DEADBEEF')).toBe(true);
+  });
+  it('rejects branch names and too-short/long or non-hex strings', () => {
+    expect(isCommitHash('main')).toBe(false);
+    expect(isCommitHash('abc123')).toBe(false); // 6 chars
+    expect(isCommitHash('a'.repeat(41))).toBe(false);
+    expect(isCommitHash('feature/xyz1234')).toBe(false);
+  });
+});
+
+describe('shortenRef', () => {
+  it('abbreviates a full 40-char hash to 7 chars', () => {
+    const full = '0123456789abcdef0123456789abcdef01234567';
+    expect(shortenRef(full)).toBe('0123456');
+  });
+  it('leaves branch names and short refs untouched', () => {
+    expect(shortenRef('main')).toBe('main');
+    expect(shortenRef('abc1234')).toBe('abc1234'); // not a full 40-char hash
+  });
+});
 
 describe('validateGitRefName', () => {
   it('accepts normal branch names', () => {

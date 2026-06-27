@@ -3,6 +3,7 @@
   import Modal from '../common/Modal.svelte';
   import ColorSelect from '../common/ColorSelect.svelte';
   import { requestDirtyState } from '../../lib/utils/dirty-check';
+  import { isCommitHash } from '../../lib/utils/git-ref';
   import { t } from '../../lib/i18n/index.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
   import { defaultsStore } from '../../lib/stores/defaults.svelte';
@@ -91,7 +92,7 @@
       {/each}
     </div>
   {:else}
-    {@const isHash = /^[0-9a-f]{7,40}$/i.test(hash)}
+    {@const isHash = isCommitHash(hash)}
     <div class="modal-context-card">
       <span use:tooltip={hash} class="modal-pill modal-pill--target">
         <i class="codicon {isHash ? 'codicon-git-commit' : 'codicon-git-branch'}"></i>
