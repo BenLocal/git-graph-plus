@@ -839,7 +839,7 @@ export class GitService {
    *  --merge-base" (one-time capability probe, permanent fallback) from
    *  "this particular call failed with a bad ref / missing object"
    *  (transient, must not poison the capability flag). */
-  private mergeTreeCheck(ours: string, theirs: string, mergeBase?: string): Promise<
+  private async mergeTreeCheck(ours: string, theirs: string, mergeBase?: string): Promise<
     | { kind: 'ok'; value: { hasConflict: boolean; files: string[]; tree?: string } }
     | { kind: 'unknown-option' }
     | { kind: 'error' }
@@ -847,67 +847,67 @@ export class GitService {
     const args = mergeBase
       ? ['merge-tree', '--write-tree', `--merge-base=${mergeBase}`, ours, theirs]
       : ['merge-tree', '--write-tree', ours, theirs];
-    return new Promise((resolve) => {
-      const proc = spawn(getGitBinaryPath(), args, {
-        cwd: this.repoPath,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', LC_ALL: 'C' },
-      });
-      const timer = setTimeout(() => { proc.kill('SIGTERM'); resolve({ kind: 'error' }); }, 15000);
-      let stdout = '';
-      let stderr = '';
-      proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
-      proc.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
-      proc.on('close', (code) => {
-        clearTimeout(timer);
-        // merge-tree --write-tree output (no -z) is:
-        //   <tree OID>
-        //   <conflicted file info>   (one "<mode> <oid> <stage>\t<path>" per
-        //                             conflicted index entry; empty when clean)
-        //   <blank line>
-        //   <informational messages> ("CONFLICT (...)" prose, "Auto-merging …")
-        const lines = stdout.split('\n');
-        const firstLine = lines[0]?.trim();
-        // The first line is the merged tree OID (present on both clean and
-        // conflicted merges). Callers chain it as the `ours` of the next probe
-        // to simulate a sequential rebase.
-        const tree = firstLine && /^[0-9a-f]{7,64}$/.test(firstLine) ? firstLine : undefined;
-        if (code === 0) {
-          resolve({ kind: 'ok', value: { hasConflict: false, files: [], tree } });
-          return;
-        }
-        if (stderr.includes('unknown option') || stderr.includes('unrecognized argument')) {
-          resolve({ kind: 'unknown-option' });
-          return;
-        }
-        // git merge-tree exits 1 on a real conflict (with the file-info section
-        // populated) and ~128 on an error like a bad ref / missing object.
-        // Treating every non-zero exit as conflict produced phantom
-        // "0 conflicting files" banners; gate on real conflict output.
-        //
-        // Read the conflicting paths from the structured file-info section
-        // rather than the prose "CONFLICT (...)" lines: the prose wording
-        // varies by conflict type (content / modify-delete / rename / …), so
-        // scraping it mis-parsed everything except plain content conflicts
-        // (e.g. a modify/delete line yielded the commit hash, not the path).
-        const files: string[] = [];
-        const seen = new Set<string>();
-        for (let i = 1; i < lines.length; i++) {
-          if (lines[i] === '') break; // blank line terminates the file-info section
-          const m = lines[i].match(/^[0-7]{6} [0-9a-f]+ [1-3]\t(.+)$/);
-          if (m && !seen.has(m[1])) { seen.add(m[1]); files.push(m[1]); }
-        }
-        const hasConflictMsg = stdout.includes('CONFLICT');
-        if (code === 1 && (files.length > 0 || hasConflictMsg)) {
-          // files may be empty if a conflict was signaled but left no index
-          // entries (unusual) — still surface the conflict.
-          resolve({ kind: 'ok', value: { hasConflict: true, files, tree } });
-          return;
-        }
-        // Anything else is a transient error (invalid ref, missing object, OOM).
-        resolve({ kind: 'error' });
-      });
-      proc.on('error', () => { clearTimeout(timer); resolve({ kind: 'error' }); });
-    });
+
+    // Run through exec() rather than a hand-rolled spawn so we inherit its
+    // Buffer.concat (no UTF-8 split across chunks when reading conflicted
+    // non-ASCII paths), core.quotePath=false (literal paths), extraEnv (proxy/
+    // SSH), and memory cap. merge-tree exits non-zero on conflict/error, which
+    // exec surfaces as a GitError carrying stdout/stderr/exitCode.
+    let stdout = '';
+    let stderr = '';
+    let code: number | null = 0;
+    try {
+      stdout = await this.exec(args, { silent: true, timeout: 15000 });
+    } catch (err) {
+      if (!(err instanceof GitError)) return { kind: 'error' };
+      stdout = err.stdout;
+      stderr = err.stderr;
+      code = err.exitCode;
+    }
+
+    // merge-tree --write-tree output (no -z) is:
+    //   <tree OID>
+    //   <conflicted file info>   (one "<mode> <oid> <stage>\t<path>" per
+    //                             conflicted index entry; empty when clean)
+    //   <blank line>
+    //   <informational messages> ("CONFLICT (...)" prose, "Auto-merging …")
+    const lines = stdout.split('\n');
+    const firstLine = lines[0]?.trim();
+    // The first line is the merged tree OID (present on both clean and
+    // conflicted merges). Callers chain it as the `ours` of the next probe
+    // to simulate a sequential rebase.
+    const tree = firstLine && /^[0-9a-f]{7,64}$/.test(firstLine) ? firstLine : undefined;
+    if (code === 0) {
+      return { kind: 'ok', value: { hasConflict: false, files: [], tree } };
+    }
+    if (stderr.includes('unknown option') || stderr.includes('unrecognized argument')) {
+      return { kind: 'unknown-option' };
+    }
+    // git merge-tree exits 1 on a real conflict (with the file-info section
+    // populated) and ~128 on an error like a bad ref / missing object.
+    // Treating every non-zero exit as conflict produced phantom
+    // "0 conflicting files" banners; gate on real conflict output.
+    //
+    // Read the conflicting paths from the structured file-info section
+    // rather than the prose "CONFLICT (...)" lines: the prose wording
+    // varies by conflict type (content / modify-delete / rename / …), so
+    // scraping it mis-parsed everything except plain content conflicts
+    // (e.g. a modify/delete line yielded the commit hash, not the path).
+    const files: string[] = [];
+    const seen = new Set<string>();
+    for (let i = 1; i < lines.length; i++) {
+      if (lines[i] === '') break; // blank line terminates the file-info section
+      const m = lines[i].match(/^[0-7]{6} [0-9a-f]+ [1-3]\t(.+)$/);
+      if (m && !seen.has(m[1])) { seen.add(m[1]); files.push(m[1]); }
+    }
+    const hasConflictMsg = stdout.includes('CONFLICT');
+    if (code === 1 && (files.length > 0 || hasConflictMsg)) {
+      // files may be empty if a conflict was signaled but left no index
+      // entries (unusual) — still surface the conflict.
+      return { kind: 'ok', value: { hasConflict: true, files, tree } };
+    }
+    // Anything else is a transient error (invalid ref, missing object, OOM).
+    return { kind: 'error' };
   }
 
   async predictConflicts(ours: string, theirs: string, mergeBase?: string): Promise<{ hasConflict: boolean; files: string[] }> {

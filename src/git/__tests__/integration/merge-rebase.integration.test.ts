@@ -261,6 +261,20 @@ describe('GitService integration — merge / rebase / cherry-pick / revert', () 
       expect(result.hasConflict).toBe(true);
       expect(result.files).toContain('a.txt');
     });
+
+    it('reports a conflicting non-ASCII path literally', async () => {
+      // merge-tree now runs through exec (core.quotePath=false), so a Korean
+      // filename comes back as a literal UTF-8 path, not a dquote-escaped one.
+      commit(repo.path, 'init', { '한글.txt': 'base\n' });
+      runGit(repo.path, ['checkout', '-b', 'left']);
+      commit(repo.path, 'left edit', { '한글.txt': 'left\n' });
+      runGit(repo.path, ['checkout', 'main']);
+      commit(repo.path, 'main edit', { '한글.txt': 'main\n' });
+
+      const result = await svc.predictConflicts(head(repo.path), 'left');
+      expect(result.hasConflict).toBe(true);
+      expect(result.files).toContain('한글.txt');
+    });
   });
 
   describe('predictRebaseConflicts', () => {
