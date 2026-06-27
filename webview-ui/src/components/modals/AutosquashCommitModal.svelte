@@ -6,16 +6,29 @@
   import { getVsCodeApi } from '../../lib/vscode-api';
 
   interface Props {
+    /** Whether to create a `fixup!` or `squash!` marker commit. */
+    mode: 'fixup' | 'squash';
+    /** Target commit hash the marker is attached to. */
     commit: string;
+    /** Target commit subject — used to preview the generated message. */
+    subject: string;
     onClose: () => void;
-    onFixup: () => void;
+    onConfirm: () => void;
   }
 
-  let { commit, onClose, onFixup }: Props = $props();
+  let { mode, commit, subject, onClose, onConfirm }: Props = $props();
 
   const shortHash = (h: string) => /^[0-9a-f]{40}$/i.test(h) ? h.substring(0, 7) : h;
 
-  // Live count of staged files (what the fixup commit captures). Refreshes
+  // The message git generates for `commit --fixup|--squash`: the target's subject
+  // line prefixed with `fixup! ` / `squash! `. This mirrors git's behaviour for a
+  // normal target. If the target is itself already a `fixup!`/`squash!` commit, git
+  // strips the prefix back to the original subject; the preview shows the common
+  // case and may differ in that edge case.
+  const prefix = $derived(mode === 'fixup' ? 'fixup!' : 'squash!');
+  const previewMessage = $derived(`${prefix} ${subject}`);
+
+  // Live count of staged files (what the marker commit captures). Refreshes
   // whenever the index changes — e.g. the user stages/unstages in the SCM view
   // we opened alongside this modal.
   let stagedCount = $state<number | null>(null);
@@ -35,16 +48,24 @@
     return () => window.removeEventListener('message', handler);
   });
 
-  const canFixup = $derived((stagedCount ?? 0) > 0);
+  const canConfirm = $derived((stagedCount ?? 0) > 0);
+  const title = $derived(t(mode === 'fixup' ? 'fixup.title' : 'autosquash.title'));
+  const desc = $derived(t(mode === 'fixup' ? 'fixup.desc' : 'autosquash.desc'));
+  const confirmLabel = $derived(t('autosquash.button'));
 </script>
 
-<Modal title={t('fixup.title')} {onClose}>
-  <p class="modal-desc">{t('fixup.desc')}</p>
+<Modal {title} {onClose}>
+  <p class="modal-desc">{desc}</p>
   <div class="modal-context-card">
     <span use:tooltip={commit} class="modal-pill modal-pill--target">
       <i class="codicon codicon-git-commit"></i>
       <span class="modal-pill-text">{shortHash(commit)}</span>
     </span>
+  </div>
+
+  <div class="preview">
+    <span class="preview-label">{t('autosquash.preview')}:</span>
+    <div class="preview-message">{previewMessage}</div>
   </div>
 
   <div class="form-actions">
@@ -65,11 +86,32 @@
       {/if}
     </div>
     <button onclick={onClose}>{t('common.cancel')}</button>
-    <button class="primary" onclick={onFixup} disabled={!canFixup}>{t('fixup.fixup')}</button>
+    <button class="primary" onclick={onConfirm} disabled={!canConfirm}>{confirmLabel}</button>
   </div>
 </Modal>
 
 <style>
+  .preview {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+  }
+  .preview-label {
+    color: var(--text-secondary);
+    font-size: inherit;
+  }
+  .preview-message {
+    max-height: 120px;
+    overflow-y: auto;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.12));
+    border: 1px solid var(--border, rgba(127, 127, 127, 0.2));
+    font-family: var(--vscode-editor-font-family, monospace);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
   .staged-status {
     display: flex;
     align-items: center;

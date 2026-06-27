@@ -164,6 +164,7 @@ export const en: Record<string, string> = {
   'graph.cherryPickCommit': 'Cherry-Pick Commit',
   'graph.revertCommit': 'Revert Commit',
   'graph.commitFixup': 'Create Fixup Commit',
+  'graph.commitSquash': 'Create Squash Commit',
   'graph.savePatch': 'Save as Patch',
   'graph.compareToLocal': 'Compare to Local Changes',
   'graph.viewChanges': 'View Changes',
@@ -398,13 +399,16 @@ export const en: Record<string, string> = {
   'cherryPick.noConflict': 'No cherry-pick conflicts',
   'cherryPick.cherryPick': 'Cherry-Pick',
 
-  // Fixup modal
+  // Fixup / squash (autosquash) modal
   'fixup.title': 'Create Fixup Commit',
   'fixup.desc': 'Commit the staged changes as a fixup of the selected commit.',
   'fixup.checkingStaged': 'Checking staged changes',
   'fixup.stagedNone': 'No staged changes',
   'fixup.stagedIncluded': '{count} staged',
-  'fixup.fixup': 'Create Fixup Commit',
+  'autosquash.title': 'Create Squash Commit',
+  'autosquash.desc': 'Commit the staged changes as a squash of the selected commit.',
+  'autosquash.button': 'Create',
+  'autosquash.preview': 'Commit message to create',
 
   // Revert modal
   'revert.title': 'Revert Commit',

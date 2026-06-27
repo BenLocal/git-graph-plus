@@ -164,6 +164,7 @@ export const zh: Record<string, string> = {
   'graph.cherryPickCommit': '遴选提交',
   'graph.revertCommit': '还原提交',
   'graph.commitFixup': 'Create Fixup Commit',
+  'graph.commitSquash': 'Create Squash Commit',
   'graph.savePatch': '另存为补丁',
   'graph.compareToLocal': '与本地更改比较',
   'graph.viewChanges': '查看更改',
@@ -398,13 +399,16 @@ export const zh: Record<string, string> = {
   'cherryPick.noConflict': '无 Cherry-Pick 冲突',
   'cherryPick.cherryPick': '遴选',
 
-  // Fixup modal
+  // Fixup / squash (autosquash) modal
   'fixup.title': 'Create Fixup Commit',
   'fixup.desc': '将已暂存的更改作为所选提交的 fixup 提交。',
   'fixup.checkingStaged': '正在检查已暂存更改',
   'fixup.stagedNone': '无已暂存更改',
   'fixup.stagedIncluded': '已暂存 {count} 个',
-  'fixup.fixup': 'Create Fixup Commit',
+  'autosquash.title': 'Create Squash Commit',
+  'autosquash.desc': '将已暂存的更改作为所选提交的 squash 提交。',
+  'autosquash.button': 'Create',
+  'autosquash.preview': '将创建的提交消息',
 
   // Revert modal
   'revert.title': '还原提交',

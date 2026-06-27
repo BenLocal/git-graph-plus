@@ -282,6 +282,10 @@ describe('GitService', () => {
       await expect(service.commitFixup('-foo')).rejects.toThrow("must not start with '-'");
     });
 
+    it('commitSquash rejects hash starting with -', async () => {
+      await expect(service.commitSquash('-foo')).rejects.toThrow("must not start with '-'");
+    });
+
     it('reset rejects ref starting with -', async () => {
       await expect(service.reset('-foo', 'hard')).rejects.toThrow("must not start with '-'");
     });
@@ -616,6 +620,11 @@ describe('GitService', () => {
     it('commitFixup runs commit --fixup <hash>', async () => {
       await service.commitFixup('abc1234');
       expect(calls[0]).toEqual(['commit', '--fixup', 'abc1234']);
+    });
+
+    it('commitSquash runs commit --squash <hash>', async () => {
+      await service.commitSquash('abc1234');
+      expect(calls[0]).toEqual(['commit', '--squash', 'abc1234']);
     });
 
     it('push passes --force when force=force', async () => {

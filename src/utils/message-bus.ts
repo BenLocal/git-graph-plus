@@ -59,6 +59,7 @@ export type WebviewMessage =
   | { type: 'cherryPick'; payload: { commit: string; commits?: string[]; noCommit?: boolean; pushAfter?: boolean } }
   | { type: 'revert'; payload: { commit: string; noCommit?: boolean; pushAfter?: boolean } }
   | { type: 'commitFixup'; payload: { commit: string } }
+  | { type: 'commitSquash'; payload: { commit: string } }
   | { type: 'reverseCommitChanges'; payload: { commit: string; file: string; hunkIndex?: number; lineIndices?: number[] } }
   | { type: 'dragRebase'; payload: { source: string; target: string; force?: boolean; merge?: boolean; stash?: boolean; stashUntracked?: boolean; clean?: boolean } }
   | { type: 'dragMerge'; payload: { source: string; target: string; force?: boolean; merge?: boolean; stash?: boolean; stashUntracked?: boolean; clean?: boolean } }

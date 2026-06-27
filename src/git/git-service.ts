@@ -1800,6 +1800,11 @@ export class GitService {
     await this.exec(['commit', '--fixup', hash]);
   }
 
+  async commitSquash(hash: string): Promise<void> {
+    this.assertSafeRef(hash, 'commit');
+    await this.exec(['commit', '--squash', hash]);
+  }
+
   async createTag(name: string, ref?: string, message?: string): Promise<void> {
     this.assertSafeRef(name, 'tag');
     if (ref) this.assertSafeRef(ref, 'tag');

@@ -17,7 +17,7 @@
   import RebaseBranchModal from '../modals/RebaseBranchModal.svelte';
   import CherryPickModal from '../modals/CherryPickModal.svelte';
   import RevertModal from '../modals/RevertModal.svelte';
-  import FixupModal from '../modals/FixupModal.svelte';
+  import AutosquashCommitModal from '../modals/AutosquashCommitModal.svelte';
   import ResetModal from '../modals/ResetModal.svelte';
   import CheckoutCommitModal from '../modals/CheckoutCommitModal.svelte';
   import SquashModal from '../modals/SquashModal.svelte';
@@ -223,8 +223,8 @@
   let showRevertModal = $state(false);
   let revertTarget = $state('');
 
-  let showFixupModal = $state(false);
-  let fixupTarget = $state('');
+  // Single target for the shared fixup/squash modal; null when closed.
+  let autosquashTarget = $state<{ hash: string; subject: string; mode: 'fixup' | 'squash' } | null>(null);
 
   // Squash selected commits: the validated chain (oldest→newest) when open.
   let squashChain = $state<Commit[] | null>(null);
@@ -1062,16 +1062,14 @@
           },
         });
       }
-      modifyOps.push({
-        label: t('graph.commitFixup'),
-        action: () => {
-          fixupTarget = commit.hash;
-          showFixupModal = true;
-          // Open the SCM view so the user can stage changes before committing
-          // the fixup; the modal tracks the staged count live.
-          vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
-        },
-      });
+      // Open the SCM view so the user can stage changes before committing the
+      // marker; the modal tracks the staged count live.
+      const openAutosquash = (mode: 'fixup' | 'squash') => {
+        autosquashTarget = { hash: commit.hash, subject: commit.subject, mode };
+        vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
+      };
+      modifyOps.push({ label: t('graph.commitFixup'),  action: () => openAutosquash('fixup') });
+      modifyOps.push({ label: t('graph.commitSquash'), action: () => openAutosquash('squash') });
       groups.push(modifyOps);
 
       // ── Commit operations ──
@@ -1692,7 +1690,7 @@
     x={contextMenu.x}
     y={contextMenu.y}
     items={contextMenu.items}
-    onClose={() => { contextMenu = null; if (!showRebaseModal && !showCherryPickModal && !showRevertModal && !showResetModal && !showFixupModal) contextMenuHash = null; }}
+    onClose={() => { contextMenu = null; if (!showRebaseModal && !showCherryPickModal && !showRevertModal && !showResetModal && !autosquashTarget) contextMenuHash = null; }}
   />
 {/if}
 
@@ -1796,11 +1794,18 @@
   />
 {/if}
 
-{#if showFixupModal}
-  <FixupModal
-    commit={fixupTarget}
-    onClose={() => { showFixupModal = false; contextMenuHash = null; }}
-    onFixup={() => { showFixupModal = false; contextMenuHash = null; vscode.postMessage({ type: 'commitFixup', payload: { commit: fixupTarget } }); }}
+{#if autosquashTarget}
+  <AutosquashCommitModal
+    mode={autosquashTarget.mode}
+    commit={autosquashTarget.hash}
+    subject={autosquashTarget.subject}
+    onClose={() => { autosquashTarget = null; contextMenuHash = null; }}
+    onConfirm={() => {
+      const target = autosquashTarget!;
+      autosquashTarget = null;
+      contextMenuHash = null;
+      vscode.postMessage({ type: target.mode === 'fixup' ? 'commitFixup' : 'commitSquash', payload: { commit: target.hash } });
+    }}
   />
 {/if}
 
