@@ -116,7 +116,8 @@ class ModalStore {
   closePushTag() { this.pushTag = { show: false, tagName: '', remote: 'origin' }; }
 
   get anyOpen(): boolean {
-    return this.deleteBranch.show || this.deleteTag.show || this.createBranch.show ||
+    return this.amend.show ||
+      this.deleteBranch.show || this.deleteTag.show || this.createBranch.show ||
       this.createTag.show || this.merge.show || this.checkoutRemote.show ||
       this.renameBranch.show || this.deleteRemoteBranch.show || this.removeWorktree.show ||
       this.stashApply.show || this.stashRename.show || this.stashSave.show || this.stashRestore.show ||

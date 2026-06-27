@@ -62,6 +62,9 @@ describe('modalStore.anyOpen', () => {
     // Spot-check several different modals to confirm the getter actually
     // ORs across all the show flags it claims to.
     const checks: Array<[() => void, () => void]> = [
+      // amend was historically omitted from anyOpen, so Esc on the Amend
+      // modal leaked through to the global handler and cleared the selection.
+      [() => modalStore.openAmend({ hash: 'h', subject: 's', message: 'm', isPushed: false }), () => modalStore.closeAmend()],
       [() => modalStore.openCreateBranch('main'), () => modalStore.closeCreateBranch()],
       [() => modalStore.openMerge('a', 'b'), () => modalStore.closeMerge()],
       [() => modalStore.openFetch(), () => modalStore.closeFetch()],
