@@ -37,10 +37,14 @@ beforeEach(() => {
     const proc = fakeProc();
     const resp = responses.shift() ?? { code: 0 };
     // Emit asynchronously, the way a real child would, after the caller has
-    // attached its data/close listeners.
+    // attached its data/end/close listeners. mergeTreeCheck now reads the
+    // streams via exec()'s bufferStream, which resolves on 'end' — so each
+    // stream must end before 'close', or exec waits forever.
     queueMicrotask(() => {
       if (resp.stdout) proc.stdout.emit('data', Buffer.from(resp.stdout));
+      proc.stdout.emit('end');
       if (resp.stderr) proc.stderr.emit('data', Buffer.from(resp.stderr));
+      proc.stderr.emit('end');
       proc.emit('close', resp.code);
     });
     return proc as unknown as ReturnType<typeof childProcess.spawn>;
@@ -157,13 +161,16 @@ describe('predictRebaseConflicts fallbacks', () => {
 
   it('falls back to a single merge-tree check when no merge base exists', async () => {
     const service = new GitService('/tmp/repo');
-    (service as never as { exec: (a: string[]) => Promise<string> }).exec = vi.fn(async (args: string[]) => {
+    // mergeTreeCheck now runs through exec too, so drive everything via the exec
+    // mock: no merge base, and a single clean merge-tree probe.
+    const execMock = vi.fn(async (args: string[]) => {
       if (args[0] === 'merge-base') throw new Error('no merge base');
-      return '';
+      return ''; // merge-tree: clean (exit 0, no conflict output)
     });
-    responses = [{ code: 0 }]; // the single fallback merge-tree: clean
+    (service as never as { exec: (a: string[]) => Promise<string> }).exec = execMock;
     const result = await service.predictRebaseConflicts('branch', 'onto');
     expect(result).toEqual({ hasConflict: false, files: [] });
-    expect(spawnArgs).toHaveLength(1);
+    const mergeTreeCalls = execMock.mock.calls.filter(c => (c[0] as string[])[0] === 'merge-tree');
+    expect(mergeTreeCalls).toHaveLength(1);
   });
 });
