@@ -24,8 +24,10 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 - **완전한 Git 워크플로우** - 브랜치, merge, rebase, cherry-pick, reset, stash, worktree, 태그, 리모트 작업
 - **드래그 Rebase & Merge** - 한 브랜치를 다른 브랜치 위로 드래그하여 rebase 또는 merge - 명령어 없이
 - **Interactive Rebase** - 드래그로 커밋 순서 변경, 커밋별 액션 제어 (pick, squash, fixup, drop 등)
+- **Fixup & Squash 워크플로우** - 그래프에서 `fixup!`/`squash!` 커밋을 생성하고, interactive rebase의 autosquash 토글로 대상에 접어 넣기
 - **충돌 예측 & 해결** - merge/rebase 실행 전에 충돌 파일을 미리 확인하고, VS Code 3-way 병합 편집기로 해결
 - **내장 Diff 뷰어** - Shiki 기반 구문 강조, 이미지 diff (나란히 보기, 스와이프, 오니언 스킨)
+- **마크다운 커밋 메시지** - 커밋 설명을 상세 패널에서 서식 있는 마크다운으로 렌더링, 마크다운/일반 텍스트 토글 제공
 - **고급 Git 도구** - Git Flow, Bisect, LFS 파일 잠금, 서브모듈, 통계, dangling 커밋 복구가 포함된 Reflog
 
 ---
@@ -40,9 +42,11 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | **커밋 정렬**     | Fork와 같은 위상순 정렬로 명확한 브랜치 히스토리 표시                                     |
 | **세 가지 뷰**    | **그래프**로 시각적 히스토리, **Reflog**로 git 참조 로그 탐색, **통계**로 분석            |
 | **커밋 상세**     | 커밋 클릭으로 메타데이터, 변경 파일, 전체 diff를 크기 조절 가능한 하단 패널에서 확인      |
+| **마크다운 메시지** | 마크다운이 포함된 커밋 메시지를 상세 패널에서 서식 렌더링, 마크다운/일반 텍스트 토글 제공 |
 | **커밋 링크**     | 커밋 메시지의 이슈·PR·머지 리퀘스트 참조를 클릭 가능한 링크로 변환 - `origin`에서 GitHub/GitLab 자동 감지 및 사용자 정의 정규식 규칙 지원 |
-| **커밋 비교**     | 기준 커밋 선택 후 다른 커밋 클릭으로 비교 - 또는 커밋과 작업 트리 비교                    |
+| **커밋 비교**     | 기준 커밋 선택 후 다른 커밋 클릭으로 비교 - 여러 커밋을 선택해 합쳐진 변경 패널 토글, 또는 커밋과 작업 트리 비교 |
 | **검색**          | 메시지, 작성자, 날짜 범위, 해시, 변경된 파일로 커밋 검색 - 결과 하이라이트 및 키보드 탐색 |
+| **HEAD로 이동**   | 검색창 옆 버튼으로 현재 HEAD 커밋으로 스크롤 (화면 밖일 때 강조), 검색에서도 `HEAD` 키워드 매칭 |
 | **키보드 탐색**   | 방향키로 그래프 선택 이동, Ctrl/Cmd로 첫 부모 또는 최신 자식으로 점프하며 돌아올 경로 기억 |
 | **브랜치 필터**   | 선택한 브랜치에서 도달 가능한 커밋만 표시하도록 커밋 그래프 필터링                        |
 | **미커밋 변경사항** | 미커밋 변경사항을 가상 노드로 표시합니다. 클릭 시 VS Code SCM 뷰를 열어 스테이징 및 커밋이 가능합니다. |
@@ -63,9 +67,10 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | **Amend**                | 그래프에서 클릭 한 번으로 마지막 커밋을 즉시 수정(amend)                                |
 | **Merge**                | Default, `--no-ff`, `--ff-only`, squash merge 전략                                      |
 | **Rebase**               | 일반 rebase 및 드래그로 순서 변경 가능한 interactive rebase UI                          |
-| **Interactive Rebase**   | 액션 드롭다운 (pick, reword, edit, squash, fixup, drop) 및 drop 경고가 포함된 시각적 UI |
+| **Interactive Rebase**   | 액션 드롭다운 (pick, reword, edit, squash, fixup, drop), drop 경고, `fixup!`/`squash!` 커밋을 대상에 접어 넣는 autosquash 토글이 포함된 시각적 UI - 브랜치 또는 여러 커밋 선택에서 시작 |
 | **드래그 Rebase/Merge**  | 그래프에서 한 브랜치를 다른 브랜치 위로 드래그하여 대상 위로 rebase하거나 대상에 merge  |
 | **Squash Commits**       | 그래프에서 연속된 여러 커밋을 선택해 하나로 합치기                                      |
+| **Fixup / Squash 커밋**  | 스테이징된 변경을 컨텍스트 메뉴에서 임의 커밋의 `fixup!` 또는 `squash!` 커밋으로 생성, autosquash 준비 |
 | **Cherry-pick & Revert** | 특정 커밋 적용 또는 되돌리기 (한 개 또는 여러 개 동시 선택), `--no-commit` 옵션 포함     |
 | **Reset**                | soft, mixed, hard 모드로 임의의 커밋으로 reset                                          |
 | **태그**                 | 경량 또는 주석 태그 생성; 태그 상세 보기, 리모트에 push, 로컬/리모트 삭제               |

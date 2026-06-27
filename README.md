@@ -24,8 +24,10 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 - **Full Git Workflow** - Branch, merge, rebase, cherry-pick, reset, stash, worktree, tags, and remote operations
 - **Drag to Rebase & Merge** - Drag one branch onto another to rebase or merge it - no commands needed
 - **Interactive Rebase** - Drag-to-reorder commits with per-commit action control (pick, squash, fixup, drop, etc.)
+- **Fixup & Squash Workflow** - Create `fixup!`/`squash!` commits from the graph, then fold them in with the interactive-rebase autosquash toggle
 - **Conflict Prediction & Resolution** - Preview conflicting files before you run a merge/rebase, then resolve in the VS Code 3-way merge editor
 - **Built-in Diff Viewer** - Shiki-powered syntax highlighting with image diff (side-by-side, swipe, onion-skin)
+- **Markdown Commit Messages** - Commit descriptions render as formatted Markdown in the details panel, with a Markdown/Plain toggle
 - **Advanced Git Tooling** - Git Flow, Bisect, LFS with file locks, Submodules, Statistics, and Reflog with dangling-commit recovery
 
 ---
@@ -40,9 +42,11 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Commit Ordering**     | Topological ordering like Fork for clear branch history                                                               |
 | **Three Views**         | **Graph** for visual history, **Reflog** for git reference log history, **Statistics** for analytics                  |
 | **Commit Details**      | Click any commit to view metadata, changed files, and full diffs in a resizable bottom panel                          |
+| **Markdown Messages**   | Commit messages containing Markdown render formatted in the details panel, with a Markdown/Plain toggle               |
 | **Commit Links**        | Issue, PR, and merge-request references in commit messages become clickable links - GitHub/GitLab auto-detected from `origin`, plus custom regex rules |
-| **Commit Comparison**   | Select a base commit, then click another to compare - or compare any commit to your working tree                      |
+| **Commit Comparison**   | Select a base commit, then click another to compare - select multiple commits to toggle a combined changes panel, or compare any commit to your working tree |
 | **Search**              | Find commits by message, author, date range, hash, or changed file - with result highlighting and keyboard navigation |
+| **Jump to HEAD**        | A button beside the search box scrolls to the current HEAD commit (emphasized when off-screen); search also matches the `HEAD` keyword |
 | **Keyboard Navigation** | Move the graph selection with arrow keys; Ctrl/Cmd jumps to the first parent or newest child, remembering the path back |
 | **Branch Filter**       | Filter the commit graph to show only commits reachable from a selected branch                                         |
 | **Uncommitted Changes** | Shows pending uncommitted changes as a virtual node. Clicking it opens the VS Code SCM view for staging/committing. |
@@ -63,9 +67,10 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Amend**                | Amend the last commit directly from the graph with a single click                                    |
 | **Merge**                | Default, `--no-ff`, `--ff-only`, and squash merge strategies                                          |
 | **Rebase**               | Standard rebase and interactive rebase with drag-to-reorder UI                                        |
-| **Interactive Rebase**   | Visual UI with action dropdown (pick, reword, edit, squash, fixup, drop) and drop warnings            |
+| **Interactive Rebase**   | Visual UI with action dropdown (pick, reword, edit, squash, fixup, drop), drop warnings, and an autosquash toggle that folds `fixup!`/`squash!` commits into their targets - start it from a branch or a multi-commit selection |
 | **Drag to Rebase/Merge** | Drag one branch onto another in the graph to rebase it onto, or merge it into, the target             |
 | **Squash Commits**       | Select multiple consecutive commits in the graph and squash them into one                             |
+| **Fixup / Squash Commit** | Commit staged changes as a `fixup!` or `squash!` of any commit straight from its context menu, ready for autosquash |
 | **Cherry-pick & Revert** | Apply or undo specific commits (one or several selected at once), with `--no-commit` option           |
 | **Reset**                | Reset to any commit with soft, mixed, or hard mode                                                    |
 | **Tags**                 | Create lightweight or annotated tags; view tag details, push to remote, delete locally or from remote |

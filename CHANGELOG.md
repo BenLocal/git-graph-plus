@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.7.0 (2026-06-27)
+
+### New Features
+- **Markdown Commit Messages** - Commit messages containing Markdown now render formatted in the Commit Details panel. Messages with Markdown default to the rendered view and offer a Markdown/Plain toggle (applied per commit); plain messages stay as-is. Rendering is token-based for XSS safety, and links/images open externally through an http(s) scheme guard.
+- **Create Fixup Commit** - A "Create Fixup Commit" context-menu action commits your staged changes as a `fixup!` of the selected commit - no more copying a hash and running `git commit --fixup` by hand. Like Amend, it opens the SCM view to stage first and confirms with a live staged-file count.
+- **Create Squash Commit** - A companion "Create Squash Commit" action commits staged changes as a `squash!` of the selected commit, with the generated commit message previewed in the modal.
+- **Interactive Rebase Autosquash** - The interactive rebase modal gained an Autosquash toggle. When `fixup!`/`squash!` commits are present it is on by default and arranges them under their targets; turning it off restores the loaded order. The modal stays a preview until "Start Rebase".
+- **Multi-Select Interactive Rebase** - Select a contiguous range of commits in the graph and start an interactive rebase straight from the selection menu. It resolves the containing branch, checks it out (offering stash/discard for a dirty tree, or a branch picker when several qualify), then opens the rebase editor.
+- **Multi-Commit Comparison Panel** - The multi-select menu now has a "View Changes" / "Hide Changes" toggle that opens a combined diff panel for the selected commits, with Esc closing the panel before clearing the selection.
+- **Jump to HEAD** - A location button beside the search box scrolls the graph to the current HEAD commit (emphasized only when HEAD is off-screen), and typing `HEAD` in search now navigates to it.
+- **Configurable Commit Counts** - New `gitGraphPlus.initialCommitCount` (default 200) and `gitGraphPlus.loadMoreCommitCount` (default 50) settings control how many commits load on first render and per "Load more commits" click - lower the initial count for faster loads in huge repositories.
+- **Open Settings Button** - A gear button at the far right of the toolbar opens VS Code Settings pre-filtered to this extension.
+
+### Improvements
+- **Commit Context Menu Regrouped** - Amend and Create Fixup/Squash Commit are now grouped as staged-change edits, Save Patch moved into the Export/Copy group, and Bisect actions merged into the compare/inspect group. The toolbar's right-side icons were also reordered for a clearer layout.
+
+### Bug Fixes
+- **Stash Connection** - Stashes whose original branch was rebased or deleted no longer float orphaned in the graph; their base commit is walked back into the main tree so the badge reconnects to history (#52).
+- **Markdown-Diff Tools** - The commit parent is now resolved to a full SHA before launching external diff tools, fixing diffs for Markdown-based tools (#51).
+- **Commit Details Scrolling** - Commit details stay scrollable on short viewports instead of clipping content.
+- **Esc in Diff View** - Pressing Esc now unhighlights expanded folders and deselects the active file as expected.
+- **Tooltip Stacking** - Only one tooltip shows when hovering nested elements.
+
 ## 0.6.0 (2026-06-25)
 
 ### New Features

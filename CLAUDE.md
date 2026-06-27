@@ -48,6 +48,8 @@ npm run package            # vsce package → .vsix file
 - **`git/git-graph-builder.ts`** — Builds the visual graph layout (rail assignment, merge lines) from parsed commits.
 - **`git/patch-builder.ts`** — Builds patches for reverse-changes (undo file/hunk/line against working tree) and `.patch` export.
 - **`git/git-error-formatter.ts`** — Normalizes raw git stderr into user-facing error messages.
+- **`git/git-binary.ts`** — Holds the resolved path to the `git` executable (module-level, defaults to `'git'` on PATH). `extension.ts` resolves VS Code's `git.path` setting at activation and calls `setGitBinaryPath` so all spawn sites pick it up (matters on Windows portable/MSYS2 installs).
+- **`git/vscode-git-bridge.ts`** — Bridges to the built-in `vscode.git` extension API (only the bits we use) to delegate credential auth on fetch/push.
 - **`git/types.ts`** — Shared TypeScript types for git data structures.
 - **`panels/MainPanel.ts`** — VS Code WebviewPanel host. Routes messages between the webview and GitService.
 - **`utils/message-bus.ts`** — Typed message definitions for Extension ↔ Webview communication (discriminated union types).
@@ -84,6 +86,9 @@ All communication is via `postMessage` / `onDidReceiveMessage`. Message types ar
 
 - Extension is bundled with **esbuild** (CJS, Node target). Webview is bundled with **Vite** (ESM, browser target).
 - `vscode` is an external dependency (not bundled) — provided by the VS Code runtime.
+- **`git/` modules stay free of any `vscode` import** so GitService and parsers remain unit-testable against the real git CLI. Anything vscode-aware (settings, the built-in git extension API) lives in `extension.ts`/`panels/` or a dedicated bridge (`vscode-git-bridge.ts`) and is injected in (e.g. `setGitBinaryPath`).
+- **Guard rapid async with `utils/sequence-guard.ts`** (`SequenceGuard`): `issue()` a ticket before a request, and only apply the result if the ticket `isCurrent()` after the await — prevents a late-finishing older request (rapid clicks on different commits/files) from overwriting a newer one.
+- User-facing settings live under the `gitGraphPlus.*` namespace and are read via `utils/config.ts` (e.g. `timeout` seconds → `GitService.setDefaultTimeout`, initial/load-more commit counts). Add new settings to `package.json` `contributes.configuration` and read them through there.
 - The extension activates on `onStartupFinished`; on activation it discovers repos in the workspace and is a no-op when none exist.
 - Tests use **Vitest**, split into two projects in `vitest.config.mts`:
   - `backend` — extension-host code (`src/**/*.test.ts`), node env, runs against the **real `git` CLI**. Integration tests in `src/git/__tests__/integration/` spawn real git/git-flow/git-lfs and use a 30s timeout.
