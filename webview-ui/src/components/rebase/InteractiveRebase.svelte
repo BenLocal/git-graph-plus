@@ -116,7 +116,12 @@
     return fp;
   }
 
-  const groupPrints = $state<Record<number, string>>({});
+  // Keyed by the squash-target's commit hash, not its list index: a drag
+  // reorder moves a group to a different index, and an index-keyed map would
+  // then compare against whatever group used to sit there and wrongly "reset"
+  // the user's manually edited combined message. The hash is stable across
+  // reordering, so the edit survives unless the group's composition changes.
+  const groupPrints = $state<Record<string, string>>({});
 
   $effect.pre(() => {
     // Re-run when the list shape changes…
@@ -133,9 +138,9 @@
         const role = squashGroups[i];
         if (role === 'squash-target') {
           const fp = squashFingerprint(i);
-          if (groupPrints[i] !== fp) {
+          if (groupPrints[todo.hash] !== fp) {
             // Group composition changed — reset to new combined message
-            groupPrints[i] = fp;
+            groupPrints[todo.hash] = fp;
             todos[i].newMessage = squashGroupMessage(i);
           } else if (todo.newMessage === undefined) {
             // First time — initialize
