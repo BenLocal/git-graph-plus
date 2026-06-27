@@ -62,7 +62,12 @@ export function classifyPath(
   const fromCommonDir = path.relative(commonDir, changedPath);
   const relativePath = !fromGitDir.startsWith('..') ? fromGitDir : fromCommonDir;
 
-  if (relativePath === 'HEAD' || relativePath.startsWith('refs') || relativePath === 'packed-refs' || relativePath.startsWith('worktrees')) {
+  // Match the directory itself or a path inside it — `startsWith('refs')`
+  // alone also matched siblings like `refspec` or `worktrees-foo`, triggering
+  // spurious refresh classifications.
+  const isInDir = (dir: string) => relativePath === dir || relativePath.startsWith(dir + path.sep);
+
+  if (relativePath === 'HEAD' || isInDir('refs') || relativePath === 'packed-refs' || isInDir('worktrees')) {
     return 'refs';
   }
   if (relativePath === 'index') {

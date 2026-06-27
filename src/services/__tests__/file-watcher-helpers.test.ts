@@ -104,6 +104,12 @@ describe('classifyPath', () => {
     expect(classifyPath('/repo/.git/hooks/pre-commit', gitDir, commonDir)).toBe('unknown');
   });
 
+  it('does not match siblings that merely share a prefix with refs/worktrees', () => {
+    // `startsWith('refs')` used to also catch these.
+    expect(classifyPath('/repo/.git/refspec', gitDir, commonDir)).toBe('unknown');
+    expect(classifyPath('/repo/.git/worktrees-backup', gitDir, commonDir)).toBe('unknown');
+  });
+
   it('uses commonDir when a path is outside gitDir (linked worktree case)', () => {
     // For a linked worktree: HEAD/index live in the worktree gitdir,
     // refs/config live in the main gitdir. classify should route both.
