@@ -428,12 +428,15 @@ export function buildFullGraph(
     if (override) result.dots[i].colorOverride = override;
   }
 
-  // End remaining paths
+  // End remaining paths at the bottom of the graph. End them on their own rail
+  // (path.lastX) rather than on their position in the `unsolved` array — the two
+  // only coincidentally line up, so the array-index form bent the trailing line
+  // sideways when they didn't.
   for (let i = 0; i < unsolved.length; i++) {
     const path = unsolved[i];
     const endY = (commits.length - 0.5) * UNIT_H;
     if (path.path.points.length === 1 && Math.abs(path.path.points[0].y - endY) < 0.0001) continue;
-    path.end((i + 0.5) * UNIT_W + 4, endY + HALF_H, HALF_H);
+    path.end(path.lastX, endY + HALF_H, HALF_H);
   }
 
   return result;
