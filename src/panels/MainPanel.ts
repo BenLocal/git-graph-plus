@@ -325,8 +325,18 @@ export class MainPanel {
     await this.refreshAll();
   }
 
-  public async switchRepo(newPath: string): Promise<void> {
-    if (samePath(newPath, this.repoPath)) { return; }
+  /**
+   * Point the panel at a different repo: rebuild the GitService, reset
+   * repo-specific state, swap the file watcher, and notify the sidebar. Callers
+   * still own posting the repo list and triggering the refresh.
+   *
+   * NOTE: the sequence guards (logSequence/searchSequence/*Sequence) are
+   * intentionally NOT reset. They stay monotonic for the panel's lifetime so a
+   * request still in flight against the old repo can never share a seq with a
+   * fresh request against the new one — resetting reuses numbers and lets a
+   * stale response paint the previous repo's graph over the current one.
+   */
+  private swapRepo(newPath: string): void {
     this.repoPath = newPath;
     this.gitService = this.createGitService(newPath);
 
@@ -334,11 +344,6 @@ export class MainPanel {
     this.isFirstGetLog = true;
     this.currentRemoteFilter = undefined;
     this.currentBranchFilter = undefined;
-    // NOTE: the sequence guards (logSequence/searchSequence/*Sequence) must NOT
-    // be reset here. They are monotonic for the panel's lifetime so a request
-    // still in flight against the old repo can never share a seq with a fresh
-    // request against the new one — resetting reuses numbers and lets a stale
-    // response paint the previous repo's graph over the current one.
 
     const oldWatcher = this.fileWatcher;
     oldWatcher.dispose();
@@ -349,6 +354,11 @@ export class MainPanel {
     this.disposables.push(this.fileWatcher);
 
     MainPanel.onRepoChange?.(newPath);
+  }
+
+  public async switchRepo(newPath: string): Promise<void> {
+    if (samePath(newPath, this.repoPath)) { return; }
+    this.swapRepo(newPath);
 
     this.post({
       type: 'repoList',
@@ -1456,31 +1466,10 @@ export class MainPanel {
           if (!allowed) {
             throw new Error(`Repo not in discovered list: ${newPath}`);
           }
-          this.repoPath = newPath;
-          this.gitService = this.createGitService(newPath);
+          this.swapRepo(newPath);
 
-          // Reset repo-specific state. The sequence guards are intentionally
-          // left untouched — see switchRepo() for why resetting them lets a
-          // stale in-flight response paint the previous repo's graph.
-          this.allConflictFiles = [];
-          this.isFirstGetLog = true;
-          this.currentRemoteFilter = undefined;
-          this.currentBranchFilter = undefined;
-
-          const oldWatcher = this.fileWatcher;
-          oldWatcher.dispose();
-          const oldIdx = this.disposables.indexOf(oldWatcher);
-          if (oldIdx >= 0) { this.disposables.splice(oldIdx, 1); }
-          this.fileWatcher = new FileWatcher(newPath, (what) => {
-            this.onRepoChanged(what);
-          });
-          this.fileWatcher.enabled = vscode.workspace.getConfiguration('gitGraphPlus').get<boolean>('autoRefresh', true);
-          this.disposables.push(this.fileWatcher);
-          
-          MainPanel.onRepoChange?.(newPath);
-
-          // Update repo list in webview with cached repos but new active path
-          // Send this BEFORE refreshAll so the dropdown updates instantly
+          // Update repo list in webview with cached repos but new active path.
+          // Send this BEFORE refreshAll so the dropdown updates instantly.
           this.post({
             type: 'repoList',
             payload: { repos: this.cachedRepos, active: this.repoPath },
@@ -1832,21 +1821,8 @@ export class MainPanel {
       if (repos.length > 0 && !repos.some(r => r.path === active)) {
         // Current path is not a repo, switch to the first discovered one
         active = repos[0].path;
-        this.repoPath = active;
-        this.gitService = this.createGitService(active);
-        const oldWatcher = this.fileWatcher;
-        const oldIdx = this.disposables.indexOf(oldWatcher);
-        if (oldIdx !== -1) this.disposables.splice(oldIdx, 1);
-        oldWatcher.dispose();
-        this.fileWatcher = new FileWatcher(active, (what) => this.onRepoChanged(what));
-        this.fileWatcher.enabled = vscode.workspace.getConfiguration('gitGraphPlus').get<boolean>('autoRefresh', true);
-        this.disposables.push(this.fileWatcher);
-        
-        // Notify extension to update sidebar views
-        if (MainPanel.onRepoChange) {
-          MainPanel.onRepoChange(active);
-        }
-        
+        this.swapRepo(active);
+
         // Full refresh of the graph
         this.refreshAll();
       }
