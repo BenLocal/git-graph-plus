@@ -161,10 +161,12 @@ export function activate(context: vscode.ExtensionContext) {
   fileWatcher.enabled = vscode.workspace.getConfiguration('gitGraphPlus').get<boolean>('autoRefresh', true);
   context.subscriptions.push({ dispose: () => fileWatcher.dispose() });
 
-  // Refresh graph when any file in the workspace is saved (catches unstaged working-dir changes)
-  context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(() => {
-    MainPanel.currentPanel?.postRefresh();
-  }));
+  // Working-tree saves are already caught by FileWatcher's '**' watcher (it
+  // classifies them as 'status' and refreshes both the sidebar and the panel,
+  // debounced and gated on the autoRefresh setting). A separate
+  // onDidSaveTextDocument handler here only duplicated that work — firing an
+  // immediate, un-debounced full refresh on every save in any workspace repo,
+  // even when autoRefresh was off — so it was removed.
 
   // --- Auto-detect Git Repo if root isn't one ---
   RepoDiscoveryService.discoverRepos([activeRepoPath]).then(repos => {
