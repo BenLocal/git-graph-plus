@@ -166,7 +166,9 @@ export class GitService {
     if (filePath.startsWith('-')) {
       throw new GitError(`Path must not start with '-': ${filePath}`, null, []);
     }
-    if (filePath.startsWith('/') || filePath.split(/[\\/]/).includes('..')) {
+    // Reject absolute paths (POSIX `/...` and Windows `C:\...` / `C:/...`) and
+    // any `..` traversal so a path can't escape the repo root.
+    if (filePath.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(filePath) || filePath.split(/[\\/]/).includes('..')) {
       throw new GitError(`Unsafe path for ${context}: ${filePath}`, null, []);
     }
   }
@@ -356,7 +358,15 @@ export class GitService {
         setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* already dead */ } }, 5000);
       };
 
+      // Several exit paths can race (timeout, buffer overflow, close, spawn
+      // error). Guard so only the first settles the promise and writes one
+      // activity-log entry — previously a timeout logged once, then the
+      // subsequent process 'close' logged the same command a second time.
+      let settled = false;
+
       const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
         killHard();
         recordActivity(false);
         reject(new GitError(`Command timed out after ${timeoutMs}ms`, null, args));
@@ -380,6 +390,8 @@ export class GitService {
       const stderrP = bufferStream(proc.stderr, maxBytes);
       const onOverflow = (label: 'stdout' | 'stderr') => (err: unknown) => {
         if (!(err instanceof BufferOverflowError)) return;
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         killHard();
         recordActivity(false);
@@ -400,6 +412,10 @@ export class GitService {
           stdoutP.catch(() => Buffer.alloc(0)),
           stderrP.catch(() => Buffer.alloc(0)),
         ]);
+        // A timeout or overflow may have already settled while we awaited the
+        // buffers; if so, don't log or resolve a second time.
+        if (settled) return;
+        settled = true;
         const stdout = stdoutBuf.toString();
         const stderr = stderrBuf.toString();
         recordActivity(code === 0);
@@ -411,6 +427,8 @@ export class GitService {
       });
 
       proc.on('error', (err) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         recordActivity(false);
         reject(new GitError(err.message, null, args));
@@ -2310,8 +2328,13 @@ export class GitService {
         errors.push(err);
       }
     }
-    if (errors.length > 0) {
+    if (errors.length === 1) {
       throw errors[0];
+    }
+    if (errors.length > 1) {
+      // Surface every failing remote, not just the first, so one error doesn't
+      // hide the others.
+      throw new AggregateError(errors, `Failed to delete tag from ${errors.length} remotes`);
     }
   }
 

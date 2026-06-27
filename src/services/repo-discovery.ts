@@ -227,13 +227,17 @@ export class RepoDiscoveryService {
       }, timeoutMs);
 
       let stdout = '';
+      let stderr = '';
       proc.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
+      proc.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
       proc.on('close', (code) => {
         clearTimeout(timer);
         if (code === 0) {
           resolve(stdout.trim());
         } else {
-          reject(new Error(`git ${args[0]} failed`));
+          // Include git's stderr so a discovery failure is diagnosable rather
+          // than a bare "git X failed".
+          reject(new Error(`git ${args[0]} failed (exit ${code}): ${stderr.trim()}`));
         }
       });
       proc.on('error', (err) => {

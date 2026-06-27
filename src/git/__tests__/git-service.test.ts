@@ -139,6 +139,16 @@ describe('GitService', () => {
       await service.deleteTagFromAllRemotes('v1.0');
       expect(calls).toHaveLength(0);
     });
+
+    it('aggregates errors when more than one remote fails', async () => {
+      (service as any).cachedRemoteNames = ['origin', 'upstream'];
+      (service as any).remoteNamesCacheTime = Date.now();
+      mockExec(service, async (args) => {
+        throw new GitError(`fatal: failed for ${args[1]}`, 128, args);
+      });
+
+      await expect(service.deleteTagFromAllRemotes('v1.0')).rejects.toThrow(AggregateError);
+    });
   });
 
   describe('setExtraEnv', () => {
