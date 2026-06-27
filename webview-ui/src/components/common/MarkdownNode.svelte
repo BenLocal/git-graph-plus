@@ -15,6 +15,15 @@
     if (!/^https?:\/\//i.test(url)) return;
     vscode.postMessage({ type: 'openExternalUrl', payload: { url } });
   }
+
+  // marked hands us whatever href the commit message contained, including
+  // `javascript:` and other non-http(s) schemes. open() blocks left-clicks,
+  // but the raw href still sat on the DOM where a middle-click / keyboard
+  // "open in new tab" could reach it. Blank those out so only http(s) links
+  // ever carry a real href.
+  function safeHref(href: string): string | undefined {
+    return /^https?:\/\//i.test(href) ? href : undefined;
+  }
 </script>
 
 {#each tokens as tok}
@@ -85,10 +94,10 @@
     <br />
   {:else if tok.type === 'link'}
     {@const l = tok as Tokens.Link}
-    <a class="commit-link" href={l.href} use:tooltip={t('graph.openLink')} onclick={(e) => open(e, l.href)}><Self tokens={l.tokens} /></a>
+    <a class="commit-link" href={safeHref(l.href)} use:tooltip={t('graph.openLink')} onclick={(e) => open(e, l.href)}><Self tokens={l.tokens} /></a>
   {:else if tok.type === 'image'}
     {@const img = tok as Tokens.Image}
-    <a class="commit-link" href={img.href} use:tooltip={t('graph.openLink')} onclick={(e) => open(e, img.href)}>{img.text || img.href}</a>
+    <a class="commit-link" href={safeHref(img.href)} use:tooltip={t('graph.openLink')} onclick={(e) => open(e, img.href)}>{img.text || img.href}</a>
   {:else if tok.type === 'text'}
     {@const txt = tok as Tokens.Text}
     {#if txt.tokens && txt.tokens.length > 0}
