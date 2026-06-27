@@ -1825,7 +1825,9 @@
     branch={branchStore.currentBranch?.name ?? 'current branch'}
     onClose={() => { multiCherryPickTargets = null; contextMenuHash = null; }}
     onCherryPick={({ noCommit, pushAfter }) => {
-      const commits = multiCherryPickTargets!;
+      // Snapshot the $state proxy into a plain array — posting the proxy
+      // directly throws DataCloneError and the message silently never sends.
+      const commits = [...multiCherryPickTargets!];
       multiCherryPickTargets = null;
       contextMenuHash = null;
       uiStore.exitMultiSelect();
