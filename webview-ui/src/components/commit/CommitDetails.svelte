@@ -461,13 +461,43 @@
     return node.isFile ? [node.path] : node.children.flatMap(collectFilePaths);
   }
 
-  // A folder counts as selected when every changed file under it is selected.
+  // A collapsed folder counts as selected when every changed file under it is
+  // selected. An expanded folder is never highlighted: its files are visible and
+  // already highlighted individually, so highlighting the folder too is redundant
+  // (and looked wrong for a folder holding a single, plainly-selected file).
   function isFolderSelected(node: FileTreeNode): boolean {
+    if (expandedDirs.has(node.path)) return false;
     const filesUnder = collectFilePaths(node);
     return filesUnder.length > 0 && filesUnder.every(p => selectedPatchFiles.has(p));
   }
 
   let fileTree = $derived(buildFileTree(files));
+
+  // Mirror the local file selection into the store so the global Esc handler can
+  // tell whether a file is selected. Cleared on unmount so a closed panel never
+  // leaves the flag stuck on.
+  $effect(() => {
+    uiStore.commitFileSelected = selectedFile !== null;
+    return () => { uiStore.commitFileSelected = false; };
+  });
+
+  // When Esc asks to clear the selection (via the store signal), drop the local
+  // selection. The panel stays open; only the file/preview is deselected.
+  let lastClearSignal = uiStore.clearCommitFileSelectionSignal;
+  $effect(() => {
+    const signal = uiStore.clearCommitFileSelectionSignal;
+    if (signal !== lastClearSignal) {
+      lastClearSignal = signal;
+      selectedFile = null;
+      selectedPatchFiles = new Set();
+      // The clicked file/dir button still holds focus; Esc is a keyboard event,
+      // so :focus-visible would draw an outline on it after deselecting. Blur it.
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.classList.contains('file-item') || active.classList.contains('dir-item'))) {
+        active.blur();
+      }
+    }
+  });
 
   // Auto-expand all directories when files change
   $effect(() => {

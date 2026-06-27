@@ -58,6 +58,7 @@ beforeEach(() => {
   uiStore.commitDetailFullscreen = false;
   uiStore.comparing = false;
   uiStore.showBottomPanel = true;
+  uiStore.commitFileSelected = false;
 });
 
 afterEach(() => {
@@ -828,6 +829,83 @@ describe('CommitDetails — directory toggle', () => {
     await waitFor(() => {
       expect(container.querySelectorAll('.file-item').length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('CommitDetails — folder selection highlight', () => {
+  async function openChanges(container: HTMLElement) {
+    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
+      .find(t => /change/i.test(t.textContent ?? ''))!;
+    await fireEvent.click(changesTab);
+    await waitFor(() => container.querySelector('.file-item'));
+  }
+
+  it('selecting the only file in an expanded folder does not mark the folder selected', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/sub/only.ts', status: 'M' }]);
+    await openChanges(container);
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
+    // The file itself is selected …
+    expect(container.querySelector('.file-item')!.classList.contains('selected')).toBe(true);
+    // … but no expanded folder above it should be highlighted.
+    const selectedDirs = Array.from(container.querySelectorAll<HTMLButtonElement>('.dir-item'))
+      .filter(d => d.classList.contains('selected'));
+    expect(selectedDirs.length).toBe(0);
+  });
+
+  it('a collapsed folder with all its files selected is marked selected', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/sub/only.ts', status: 'M' }]);
+    await openChanges(container);
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
+    // Collapse the innermost folder (src/sub); its only file stays selected.
+    const dirs = Array.from(container.querySelectorAll<HTMLButtonElement>('.dir-item'));
+    await fireEvent.click(dirs[dirs.length - 1]);
+    await waitFor(() => {
+      const sub = Array.from(container.querySelectorAll<HTMLButtonElement>('.dir-item'))
+        .find(d => /sub/.test(d.textContent ?? ''))!;
+      expect(sub.classList.contains('selected')).toBe(true);
+    });
+  });
+});
+
+describe('CommitDetails — Esc-driven file deselection', () => {
+  async function openAndSelect(container: HTMLElement) {
+    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
+      .find(t => /change/i.test(t.textContent ?? ''))!;
+    await fireEvent.click(changesTab);
+    await waitFor(() => container.querySelector('.file-item'));
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.file-item')!);
+  }
+
+  it('selecting a file sets uiStore.commitFileSelected', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
+    await openAndSelect(container);
+    await waitFor(() => expect(uiStore.commitFileSelected).toBe(true));
+  });
+
+  it('requestClearCommitFileSelection deselects the current file', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
+    await openAndSelect(container);
+    await waitFor(() => expect(container.querySelector('.file-item')!.classList.contains('selected')).toBe(true));
+    uiStore.requestClearCommitFileSelection();
+    await waitFor(() => {
+      expect(container.querySelector('.file-item')!.classList.contains('selected')).toBe(false);
+      expect(uiStore.commitFileSelected).toBe(false);
+    });
+  });
+
+  it('clearing blurs the focused file item so no focus outline lingers', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
+    await openAndSelect(container);
+    const fileBtn = container.querySelector<HTMLButtonElement>('.file-item')!;
+    fileBtn.focus();
+    expect(document.activeElement).toBe(fileBtn);
+    uiStore.requestClearCommitFileSelection();
+    await waitFor(() => expect(document.activeElement).not.toBe(fileBtn));
   });
 });
 

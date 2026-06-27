@@ -261,6 +261,14 @@ import AmendModal from './components/modals/AmendModal.svelte';
       vscode.postMessage({ type: 'getBranches' });
     }
 
+    // A file selected in the commit-details panel takes the first Esc: deselect
+    // it and leave the panel open. The next Esc (no file selected) closes it.
+    if (e.key === 'Escape' && !modalStore.anyOpen && !uiStore.multiSelectArmed && uiStore.showBottomPanel && uiStore.commitFileSelected) {
+      e.preventDefault();
+      uiStore.requestClearCommitFileSelection();
+      return;
+    }
+
     // Multi-select Esc is handled in CommitGraph (1st Esc closes the panel, 2nd clears the selection).
     if (e.key === 'Escape' && !modalStore.anyOpen && !uiStore.multiSelectArmed && uiStore.showBottomPanel && (uiStore.selectedCommitHash || uiStore.comparing)) {
       e.preventDefault();

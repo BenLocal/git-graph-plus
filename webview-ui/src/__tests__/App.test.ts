@@ -25,6 +25,7 @@ function resetStores() {
   uiStore.comparing = false;
   uiStore.commitDetailFullscreen = false;
   uiStore.showBottomPanel = true;
+  uiStore.commitFileSelected = false;
   uiStore.repos = [];
   uiStore.activeRepo = '';
   uiStore.operating = null;
@@ -249,6 +250,20 @@ describe('App — keyboard shortcuts', () => {
     await fireEvent.keyDown(window, { key: 'Escape' });
     expect(uiStore.selectedCommitHash).toBeNull();
     expect(uiStore.showBottomPanel).toBe(false);
+  });
+
+  it('Escape deselects a selected file first, leaving the panel open', async () => {
+    uiStore.selectedCommitHash = 'h1';
+    uiStore.showBottomPanel = true;
+    uiStore.commitFileSelected = true;
+    const before = uiStore.clearCommitFileSelectionSignal;
+    render(App);
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    // Requested a file-selection clear …
+    expect(uiStore.clearCommitFileSelectionSignal).toBe(before + 1);
+    // … but did not close the panel or clear the commit.
+    expect(uiStore.showBottomPanel).toBe(true);
+    expect(uiStore.selectedCommitHash).toBe('h1');
   });
 
   it('Escape exits commit-detail fullscreen first, then clears selection on next Escape', async () => {

@@ -22,7 +22,19 @@ class UiStore {
   operating = $state<string | null>(null);
   badgeBarWidth = $state(4);
   loadMoreCount = $state(50);
+  // True while a file is selected in the commit-details panel. Owned (synced)
+  // by CommitDetails; read by the global Esc handler so the first Esc deselects
+  // the file instead of closing the whole panel.
+  commitFileSelected = $state(false);
+  // Bumped to ask CommitDetails to clear its current file selection. CommitDetails
+  // watches this counter (it can't be cleared from here — the selection is its
+  // local state).
+  clearCommitFileSelectionSignal = $state(0);
   private errorTimer: ReturnType<typeof setTimeout> | null = null;
+
+  requestClearCommitFileSelection() {
+    this.clearCommitFileSelectionSignal++;
+  }
 
   selectCommit(hash: string | null) {
     this.multiSelectArmed = false;
