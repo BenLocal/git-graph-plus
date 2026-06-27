@@ -19,7 +19,7 @@ export class WorktreesViewProvider implements vscode.TreeDataProvider<WorktreeIt
 
   private fetchId = 0;
 
-  refresh(): void { this.pending = this.doFetch(); }
+  refresh(): Promise<void> { this.pending = this.doFetch(); return this.pending; }
 
   prefetch(): Promise<void> {
     if (!this.pending) this.pending = this.doFetch();

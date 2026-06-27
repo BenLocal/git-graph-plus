@@ -22,9 +22,10 @@ export class RemotesViewProvider implements vscode.TreeDataProvider<RemoteTreeIt
 
   private fetchId = 0;
 
-  refresh(): void {
+  refresh(): Promise<void> {
     this.branchCache.clear();
     this.pending = this.doFetch();
+    return this.pending;
   }
 
   prefetch(): Promise<void> {

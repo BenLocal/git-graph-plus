@@ -21,8 +21,9 @@ export class BranchesViewProvider implements vscode.TreeDataProvider<BranchTreeI
 
   private fetchId = 0;
 
-  refresh(): void {
+  refresh(): Promise<void> {
     this.pending = this.doFetch();
+    return this.pending;
   }
 
   prefetch(): Promise<void> {
