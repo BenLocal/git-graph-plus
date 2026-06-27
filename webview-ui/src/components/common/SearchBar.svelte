@@ -86,16 +86,14 @@
     onBranchFilterChange([]);
   }
 
-  function doSearch() {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      clear();
-      return;
-    }
-
-    const matched: string[] = [];
+  // Precompute one lowercased haystack per commit so typing only scans the
+  // cached strings instead of rebuilding (join + toLowerCase over subject,
+  // body, refs, …) for every commit on every keystroke. Rebuilds only when
+  // the commit list changes.
+  const haystacks = $derived.by(() => {
+    const list: Array<{ hash: string; text: string }> = [];
     for (const commit of commitStore.commits) {
-      const haystack = [
+      const text = [
         commit.subject,
         commit.body,
         commit.author.name,
@@ -107,9 +105,22 @@
           .flatMap(r => r.type === 'remote-branch' && r.remote ? [r.name, `${r.remote}/${r.name}`] : [r.name]),
         ...(commit.refs.some(r => r.type === 'head') ? ['HEAD'] : []),
       ].join(' ').toLowerCase();
+      list.push({ hash: commit.hash, text });
+    }
+    return list;
+  });
 
-      if (haystack.includes(q)) {
-        matched.push(commit.hash);
+  function doSearch() {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      clear();
+      return;
+    }
+
+    const matched: string[] = [];
+    for (const { hash, text } of haystacks) {
+      if (text.includes(q)) {
+        matched.push(hash);
       }
     }
 
