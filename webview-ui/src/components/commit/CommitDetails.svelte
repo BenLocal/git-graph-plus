@@ -472,6 +472,12 @@
   }
 
   let fileTree = $derived(buildFileTree(files));
+  // Memoize the uncommitted trees too. They were rebuilt inline in the
+  // template ({@render renderUncommittedTree(buildFileTree(...))}), so any
+  // reactive change (selection, expand/collapse) re-ran buildFileTree over
+  // both lists on every render.
+  let stagedTree = $derived(uncommittedFiles ? buildFileTree(uncommittedFiles.staged) : []);
+  let unstagedTree = $derived(uncommittedFiles ? buildFileTree(uncommittedFiles.unstaged) : []);
 
   // Mirror the local file selection into the store so the global Esc handler can
   // tell whether a file is selected. Cleared on unmount so a closed panel never
@@ -840,13 +846,13 @@
             {/snippet}
             {#if uncommittedTab === 'staged'}
               {#if uncommittedFiles.staged.length > 0}
-                {@render renderUncommittedTree(buildFileTree(uncommittedFiles.staged), 0, true)}
+                {@render renderUncommittedTree(stagedTree, 0, true)}
               {:else}
                 <div class="empty-state-text">No staged changes</div>
               {/if}
             {:else}
               {#if uncommittedFiles.unstaged.length > 0}
-                {@render renderUncommittedTree(buildFileTree(uncommittedFiles.unstaged), 0, false)}
+                {@render renderUncommittedTree(unstagedTree, 0, false)}
               {:else}
                 <div class="empty-state-text">No unstaged changes</div>
               {/if}
