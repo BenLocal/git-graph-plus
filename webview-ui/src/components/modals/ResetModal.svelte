@@ -15,14 +15,13 @@
 
   let { hash, branchName, defaultMode = defaultsStore.current.reset.mode, onConfirm, onClose }: Props = $props();
 
-  // Initial value from the resolved default; the $effect below keeps it in sync
-  // if the defaultMode prop changes.
+  // Seed from the resolved default once. We intentionally do NOT keep this in
+  // sync with defaultMode afterwards: that prop's default resolves to a
+  // reactive store value, so a settings push while the modal is open would
+  // re-run the sync effect and clobber the mode the user just picked. The modal
+  // remounts per open, so a fresh default is applied each time anyway.
   // svelte-ignore state_referenced_locally
   let resetMode = $state<'soft' | 'mixed' | 'hard'>(defaultMode);
-
-  $effect(() => {
-    resetMode = defaultMode;
-  });
 </script>
 
 <Modal title={t('reset.modalTitle')} {onClose}>
