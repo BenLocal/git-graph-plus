@@ -291,6 +291,11 @@
       return;
     }
     const target = diff;
+    // Only highlight what's actually rendered (renderHunks is capped at
+    // MAX_RENDER_LINES); the tail beyond that was being tokenized but never
+    // shown. Toggling showFullDiff changes renderHunks and re-runs this effect,
+    // so the revealed lines get highlighted then.
+    const visibleHunks = renderHunks;
     const theme = shikiTheme; // capture so a theme switch invalidates the pass
     // Yield to the event loop between chunks so a multi-thousand-line diff
     // doesn't freeze the panel. Each batch processes CHUNK_SIZE lines then
@@ -308,7 +313,7 @@
         if (!ready) { highlightedLines = new Map(); return; }
         const newMap = new Map<string, string>();
         const flat: Array<{ key: string; content: string }> = [];
-        for (const hunk of target.hunks) {
+        for (const hunk of visibleHunks) {
           for (let i = 0; i < hunk.lines.length; i++) {
             flat.push({ key: `${hunk.oldStart}-${i}`, content: hunk.lines[i].content });
           }

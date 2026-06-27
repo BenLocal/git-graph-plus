@@ -35,8 +35,16 @@
     return `rgba(99, 176, 244, ${0.15 + intensity * 0.85})`;
   }
 
+  // (weekday*24+hour) → count, so the 168-cell heatmap is O(1) per cell instead
+  // of a linear find() over byWeekdayHour each time (~28k comparisons/render).
+  let heatMap = $derived.by(() => {
+    const m = new Map<number, number>();
+    for (const s of byWeekdayHour) m.set(s.weekday * 24 + s.hour, s.count);
+    return m;
+  });
+
   function getHeatCount(weekday: number, hour: number): number {
-    return byWeekdayHour.find(s => s.weekday === weekday && s.hour === hour)?.count ?? 0;
+    return heatMap.get(weekday * 24 + hour) ?? 0;
   }
 
   let totalCommits = $derived(byAuthor.reduce((sum, a) => sum + a.count, 0));
