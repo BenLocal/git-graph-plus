@@ -87,7 +87,7 @@
           class="tree-item"
           onclick={() => entry.type === 'tree' ? navigateInto(entry.name) : openFile(entry.name)}
         >
-          <span class="tree-icon">{entry.type === 'tree' ? '&#128193;' : '&#128196;'}</span>
+          <span class="tree-icon">{entry.type === 'tree' ? '📁' : '📄'}</span>
           <span class="tree-name truncate">{entry.name}</span>
         </button>
       {/each}
