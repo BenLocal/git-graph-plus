@@ -528,14 +528,25 @@
     return col * X_SCALE;
   }
 
+  // Coalesce scroll events into one update per animation frame. High-refresh
+  // displays fire scroll 100+ times/sec; without this every event synchronously
+  // pushed a new scrollTop, re-running the headOffscreen effect and the visible
+  // path/link filters (which scan the full arrays) far more often than the
+  // screen can repaint.
+  let scrollRaf: number | null = null;
   function handleScroll() {
-    if (!container) return;
-    const st = container.scrollTop;
-    const verticalChanged = st !== scrollTop;
-    scrollTop = st;
-    // Auto-pan horizontally only when the vertical position actually moved, so the
-    // user can still scroll horizontally on their own between vertical scrolls.
-    if (horizontalScroll && verticalChanged) autoPanHorizontal();
+    if (scrollRaf !== null) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = null;
+      if (!container) return;
+      const st = container.scrollTop;
+      const verticalChanged = st !== scrollTop;
+      scrollTop = st;
+      // Auto-pan horizontally only when the vertical position actually moved, so
+      // the user can still scroll horizontally on their own between vertical
+      // scrolls.
+      if (horizontalScroll && verticalChanged) autoPanHorizontal();
+    });
   }
 
   // In horizontal-scroll mode, keep the message start (the graph's right edge) of the
@@ -731,7 +742,10 @@
       }
     }
     window.addEventListener('message', handleCheckoutForRebase);
-    return () => window.removeEventListener('message', handleCheckoutForRebase);
+    return () => {
+      window.removeEventListener('message', handleCheckoutForRebase);
+      if (scrollRaf !== null) cancelAnimationFrame(scrollRaf);
+    };
   });
 
   function onCommitContextMenu(e: MouseEvent, commit: Commit) {
