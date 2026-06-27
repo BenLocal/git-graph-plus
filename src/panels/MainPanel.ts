@@ -1707,10 +1707,21 @@ export class MainPanel {
 
   private refreshing = false;
   private refreshQueued = false;
+  // Scope of a refresh coalesced while another was in flight. 'full' wins over
+  // 'status' so a branch/ref change never gets downgraded to a log-only update.
+  private queuedScope: 'full' | 'status' = 'status';
 
-  private async refreshAll(): Promise<void> {
+  /**
+   * @param scope 'full' (default) reloads the graph plus all ref data
+   *   (branches/tags/remotes/stashes/worktrees) and the sidebar. 'status' is a
+   *   working-tree/index edit: refs are unchanged, so it reloads only the log
+   *   (for the uncommitted summary row) — skipping four git spawns and the
+   *   sidebar refresh — and sends a logData message that leaves branchData as-is.
+   */
+  private async refreshAll(scope: 'full' | 'status' = 'full'): Promise<void> {
     if (this.refreshing) {
       this.refreshQueued = true;
+      if (scope === 'full') this.queuedScope = 'full';
       return;
     }
     this.refreshing = true;
@@ -1732,29 +1743,44 @@ export class MainPanel {
       // repo-unrelated "demo"-looking graph.
       const remoteFilter = this.isFirstGetLog ? MainPanel.savedRemoteFilter : this.currentRemoteFilter;
       const branchFilter = this.isFirstGetLog ? MainPanel.savedBranchFilter : this.currentBranchFilter;
-      const [allFetched, branches, tags, remotes, stashes, worktrees] = await Promise.all([
-        this.gitService.log({ limit: refreshLimit + 1, sortOrder, remoteFilter, branches: branchFilter, includeSignature }),
-        this.gitService.branches(),
-        this.gitService.tags(),
-        this.gitService.remotes(),
-        this.gitService.stashList(),
-        this.gitService.worktreeList(),
-      ]);
-      const hasMore = allFetched.length > refreshLimit;
-      const allCommits = hasMore ? allFetched.slice(0, refreshLimit) : allFetched;
-      // Handle empty repository (0 commits) gracefully. The webview renders from
-      // paths/links/dots; the legacy GraphNode[] is unused so we don't build it.
-      const branchColorResolver = this.makeBranchColorResolver();
-      const fg = allCommits.length > 0 ? buildFullGraph(allCommits, branches, branchColorResolver) : { paths: [], links: [], dots: [], commitLeftMargin: [] };
-      // Send as single combined message to ensure atomic update
-      this.post({
-        type: 'fullRefresh',
-        payload: {
-          logData: { commits: allCommits, hasMore, currentLimit: this.currentLimit, graph: [], paths: fg.paths, links: fg.links, dots: fg.dots, commitLeftMargin: fg.commitLeftMargin, remoteFilter, branches: branchFilter },
-          branchData: { branches, tags, remotes, stashes, worktrees },
-        },
-      });
-      MainPanel.onSidebarRefresh?.();
+      const logArgs = { limit: refreshLimit + 1, sortOrder, remoteFilter, branches: branchFilter, includeSignature };
+
+      const buildLogData = (allFetched: Awaited<ReturnType<typeof this.gitService.log>>, branches: Awaited<ReturnType<typeof this.gitService.branches>>) => {
+        const hasMore = allFetched.length > refreshLimit;
+        const allCommits = hasMore ? allFetched.slice(0, refreshLimit) : allFetched;
+        // Handle empty repository (0 commits) gracefully. The webview renders from
+        // paths/links/dots; the legacy GraphNode[] is unused so we don't build it.
+        const fg = allCommits.length > 0 ? buildFullGraph(allCommits, branches, this.makeBranchColorResolver()) : { paths: [], links: [], dots: [], commitLeftMargin: [] };
+        return { commits: allCommits, hasMore, currentLimit: this.currentLimit, graph: [], paths: fg.paths, links: fg.links, dots: fg.dots, commitLeftMargin: fg.commitLeftMargin, remoteFilter, branches: branchFilter };
+      };
+
+      if (scope === 'status') {
+        // branches is still needed to colour the graph, but the rest of the ref
+        // data and the sidebar can't have changed from a working-tree edit.
+        const [allFetched, branches] = await Promise.all([
+          this.gitService.log(logArgs),
+          this.gitService.branches(),
+        ]);
+        this.post({ type: 'logData', payload: buildLogData(allFetched, branches) });
+      } else {
+        const [allFetched, branches, tags, remotes, stashes, worktrees] = await Promise.all([
+          this.gitService.log(logArgs),
+          this.gitService.branches(),
+          this.gitService.tags(),
+          this.gitService.remotes(),
+          this.gitService.stashList(),
+          this.gitService.worktreeList(),
+        ]);
+        // Send as single combined message to ensure atomic update
+        this.post({
+          type: 'fullRefresh',
+          payload: {
+            logData: buildLogData(allFetched, branches),
+            branchData: { branches, tags, remotes, stashes, worktrees },
+          },
+        });
+        MainPanel.onSidebarRefresh?.();
+      }
     } catch (err) {
       console.warn('Git Graph+: refresh failed:', err instanceof Error ? err.message : err);
       if (err instanceof GitError && /not a git repository/.test(err.stderr)) {
@@ -1764,7 +1790,9 @@ export class MainPanel {
       this.refreshing = false;
       if (this.refreshQueued) {
         this.refreshQueued = false;
-        this.refreshAll();
+        const next = this.queuedScope;
+        this.queuedScope = 'status';
+        this.refreshAll(next);
       }
     }
   }
@@ -1839,9 +1867,14 @@ export class MainPanel {
     });
 
     if (shouldRefreshGraph(what)) {
-      await this.refreshAll();
+      // A pure working-tree/index edit ('status') only affects the log's
+      // uncommitted row — refs, remotes and the sidebar are untouched — so do a
+      // log-only partial refresh. 'unknown' stays full to be safe.
+      await this.refreshAll(what === 'status' ? 'status' : 'full');
     }
-    void this.postCommitLinkRules();
+    // Commit-link rules derive from the remote URL, which a working-tree edit
+    // can't change; only re-derive on ref/config-level changes.
+    if (what !== 'status') void this.postCommitLinkRules();
 
     // Skip the conflict + operation state probe (2 git subprocess spawns)
     // when we already know no operation is in progress: nothing in memory
