@@ -1098,6 +1098,7 @@
         <FileDiffView
           diff={selectedDiff}
           commitHash={commit?.hash}
+          staged={selectedFile?.startsWith('staged:') ?? false}
           onReverse={canReverseInThisView ? handleDiffReverse : undefined}
           onReverseHunk={canReverseInThisView ? handleHunkReverse : undefined}
           onReverseLines={canReverseInThisView ? handleLinesReverse : undefined}

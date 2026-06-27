@@ -33,6 +33,9 @@
   interface Props {
     diff: DiffData;
     commitHash?: string;
+    // Only meaningful for the UNCOMMITTED view: whether the selected file is in
+    // the staged (index) tab. Drives the image diff's before/after refs.
+    staged?: boolean;
     stacked?: boolean;
     // Optional commit label shown in the toolbar (used by stacked per-commit sections).
     heading?: string;
@@ -47,7 +50,7 @@
     onReverseLines?: (target: { commitHash: string; file: string; hunkIndex: number; lineIndices: number[] }) => void;
   }
 
-  let { diff, commitHash, stacked = false, heading, onReverse, onReverseHunk, onReverseLines }: Props = $props();
+  let { diff, commitHash, staged = false, stacked = false, heading, onReverse, onReverseHunk, onReverseLines }: Props = $props();
 
   // Whether this diff supports reversing (committed view). Drives both the
   // right-click menu and the per-hunk header reverse affordance. Whole-file
@@ -366,7 +369,13 @@
       </div>
     {/if}
     {#if diff.isBinary && diff.isImage}
-      <ImageDiff file={diff.file} staged={false} commitHash={commitHash ?? ''} />
+      {#if commitHash && commitHash !== 'UNCOMMITTED'}
+        <ImageDiff file={diff.file} staged={false} commitHash={commitHash} />
+      {:else}
+        <!-- UNCOMMITTED: no real commit to diff against; compare index/working
+             trees based on which tab (staged vs unstaged) the file is in. -->
+        <ImageDiff file={diff.file} {staged} />
+      {/if}
     {:else if diff.isBinary}
       <div class="diff-empty">{t('details.binaryFile')}</div>
     {:else if diffMode === 'inline'}
