@@ -154,9 +154,14 @@ export function activate(context: vscode.ExtensionContext) {
   ]).catch((err) => { console.warn('Git Graph+: sidebar prefetch failed:', err instanceof Error ? err.message : err); });
 
   // --- File Watcher ---
+  // This watcher owns the sidebar; the graph panel runs its own FileWatcher
+  // (with a smarter partial-refresh path). When the panel is open, calling
+  // postRefresh() here just duplicated that panel watcher's graph refresh;
+  // when it's closed there's no panel to refresh. So this only refreshes the
+  // sidebar. (The sidebar refresh shares one debounce timer with the panel
+  // watcher's onSidebarRefresh, so they coalesce rather than double up.)
   let fileWatcher = new FileWatcher(activeRepoPath, () => {
     refreshAll();
-    MainPanel.currentPanel?.postRefresh();
   });
   fileWatcher.enabled = vscode.workspace.getConfiguration('gitGraphPlus').get<boolean>('autoRefresh', true);
   context.subscriptions.push({ dispose: () => fileWatcher.dispose() });
@@ -199,11 +204,10 @@ export function activate(context: vscode.ExtensionContext) {
       stashesView.description = repoName;
       worktreesView.description = repoName;
 
-      // Update file watcher
+      // Update file watcher (sidebar-only; see the watcher above for why).
       fileWatcher.dispose();
       fileWatcher = new FileWatcher(activeRepoPath, () => {
         refreshAll();
-        MainPanel.currentPanel?.postRefresh();
       });
       fileWatcher.enabled = vscode.workspace.getConfiguration('gitGraphPlus').get<boolean>('autoRefresh', true);
     }
@@ -301,7 +305,6 @@ export function activate(context: vscode.ExtensionContext) {
     fileWatcher.dispose();
     fileWatcher = new FileWatcher(newPath, () => {
       refreshAll();
-      MainPanel.currentPanel?.postRefresh();
     });
     fileWatcher.enabled = vscode.workspace.getConfiguration('gitGraphPlus').get<boolean>('autoRefresh', true);
 
