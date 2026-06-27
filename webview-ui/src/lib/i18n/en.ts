@@ -163,7 +163,7 @@ export const en: Record<string, string> = {
   'graph.checkoutCommit': 'Checkout Commit',
   'graph.cherryPickCommit': 'Cherry-Pick Commit',
   'graph.revertCommit': 'Revert Commit',
-  'graph.commitFixup': 'Commit Fixup',
+  'graph.commitFixup': 'Create Fixup Commit',
   'graph.savePatch': 'Save as Patch',
   'graph.compareToLocal': 'Compare to Local Changes',
   'graph.viewChanges': 'View Changes',
@@ -399,12 +399,12 @@ export const en: Record<string, string> = {
   'cherryPick.cherryPick': 'Cherry-Pick',
 
   // Fixup modal
-  'fixup.title': 'Commit Fixup',
+  'fixup.title': 'Create Fixup Commit',
   'fixup.desc': 'Commit the staged changes as a fixup of the selected commit.',
   'fixup.checkingStaged': 'Checking staged changes',
   'fixup.stagedNone': 'No staged changes',
   'fixup.stagedIncluded': '{count} staged',
-  'fixup.fixup': 'Commit Fixup',
+  'fixup.fixup': 'Create Fixup Commit',
 
   // Revert modal
   'revert.title': 'Revert Commit',

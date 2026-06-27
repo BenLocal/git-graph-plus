@@ -163,7 +163,7 @@ export const ko: Record<string, string> = {
   'graph.checkoutCommit': 'Checkout Commit',
   'graph.cherryPickCommit': 'Cherry-Pick Commit',
   'graph.revertCommit': 'Revert Commit',
-  'graph.commitFixup': 'Commit Fixup',
+  'graph.commitFixup': 'Create Fixup Commit',
   'graph.savePatch': '패치로 저장',
   'graph.compareToLocal': '로컬 변경사항과 비교',
   'graph.viewChanges': '변경사항 보기',
@@ -399,12 +399,12 @@ export const ko: Record<string, string> = {
   'cherryPick.cherryPick': 'Cherry-Pick',
 
   // Fixup modal
-  'fixup.title': 'Commit Fixup',
+  'fixup.title': 'Create Fixup Commit',
   'fixup.desc': '스테이징된 변경을 선택한 커밋의 fixup 커밋으로 만듭니다.',
   'fixup.checkingStaged': '스테이징 변경 확인 중',
   'fixup.stagedNone': '스테이징된 변경 없음',
   'fixup.stagedIncluded': '{count}개 스테이징됨',
-  'fixup.fixup': 'Commit Fixup',
+  'fixup.fixup': 'Create Fixup Commit',
 
   // Revert modal
   'revert.title': 'Commit Revert',

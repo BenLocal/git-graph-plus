@@ -1045,19 +1045,34 @@
         groups.push([{ label: t('graph.resetBranchToHere', { branch: currentBranch }), action: () => { resetTarget = commit.hash; resetMode = 'mixed'; showResetModal = true; } }]);
       }
 
-      // ── Amend (most recent commit / HEAD) ──
+      // ── Modify commit with staged changes (amend / fixup) ──
+      // Amend rewrites HEAD; fixup records a `fixup!` commit against any commit.
+      // Both fold the currently-staged changes into an existing commit, so they
+      // live together. Amend only applies to HEAD.
+      const modifyOps: any[] = [];
       if (isHead) {
         const fullMessage = commit.body ? `${commit.subject}\n\n${commit.body}` : commit.subject;
         const cur = branchStore.currentBranch;
         const isPushed = !!cur?.upstream && !cur?.upstreamGone && (cur?.ahead ?? 0) === 0;
-        groups.push([{
+        modifyOps.push({
           label: t('graph.amendCommit'),
           action: () => {
             modalStore.openAmend({ hash: commit.hash, subject: commit.subject, message: fullMessage, isPushed });
             vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
           },
-        }]);
+        });
       }
+      modifyOps.push({
+        label: t('graph.commitFixup'),
+        action: () => {
+          fixupTarget = commit.hash;
+          showFixupModal = true;
+          // Open the SCM view so the user can stage changes before committing
+          // the fixup; the modal tracks the staged count live.
+          vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
+        },
+      });
+      groups.push(modifyOps);
 
       // ── Commit operations ──
       groups.push([
@@ -1078,17 +1093,6 @@
         },
         { label: t('graph.cherryPickCommit'), action: () => { cherryPickTarget = commit.hash; showCherryPickModal = true; } },
         { label: t('graph.revertCommit'),     action: () => { revertTarget = commit.hash; showRevertModal = true; } },
-        {
-          label: t('graph.commitFixup'),
-          action: () => {
-            fixupTarget = commit.hash;
-            showFixupModal = true;
-            // Open the SCM view so the user can stage changes before committing
-            // the fixup; the modal tracks the staged count live.
-            vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
-          },
-        },
-        { label: t('graph.savePatch'),        action: () => vscode.postMessage({ type: 'saveCommitPatch', payload: { hash: commit.hash } }) },
       ]);
 
       // ── Compare / Multi-select ──
@@ -1115,17 +1119,14 @@
           action: () => { uiStore.exitMultiSelect(); },
         });
       }
-      groups.push(compareGroup);
-
-      // ── Bisect ──
+      // ── Bisect ── (shares the compare/inspect group)
       if (bisectBadCommit) {
-        groups.push([
-          { label: t('bisect.startGood'), action: () => { const bad = bisectBadCommit!; bisectBadCommit = null; bisectStartBad = bad; bisectStartGood = commit.hash; vscode.postMessage({ type: 'bisectStart', payload: { bad, good: commit.hash } }); } },
-          { label: t('bisect.cancelSelect'), action: () => { bisectBadCommit = null; } },
-        ]);
+        compareGroup.push({ label: t('bisect.startGood'), action: () => { const bad = bisectBadCommit!; bisectBadCommit = null; bisectStartBad = bad; bisectStartGood = commit.hash; vscode.postMessage({ type: 'bisectStart', payload: { bad, good: commit.hash } }); } });
+        compareGroup.push({ label: t('bisect.cancelSelect'), action: () => { bisectBadCommit = null; } });
       } else {
-        groups.push([{ label: t('bisect.selectBad'), action: () => { bisectBadCommit = commit.hash; uiStore.selectedCommitHash = null; uiStore.showBottomPanel = false; } }]);
+        compareGroup.push({ label: t('bisect.selectBad'), action: () => { bisectBadCommit = commit.hash; uiStore.selectedCommitHash = null; uiStore.showBottomPanel = false; } });
       }
+      groups.push(compareGroup);
     } else {
       // ── Stash: compare to working ──
       groups.push([{
@@ -1139,12 +1140,20 @@
       }]);
     }
 
-    // ── Copy ──
-    groups.push([
-      { label: t('graph.copyShortSHA'), action: () => vscode.postMessage({ type: 'copyToClipboard', payload: { text: commit.abbreviatedHash } }) },
+    // ── Export / Copy ──
+    // Read-only ways to get this commit's content out: copy identifiers to the
+    // clipboard, or export the diff as a `.patch` file. Save Patch is offered
+    // for real commits only (not stashes).
+    const copyGroup: any[] = [];
+    if (!isStashCommit) {
+      copyGroup.push({ label: t('graph.savePatch'), action: () => vscode.postMessage({ type: 'saveCommitPatch', payload: { hash: commit.hash } }) });
+    }
+    copyGroup.push(
       { label: t('graph.copySHA'), action: () => vscode.postMessage({ type: 'copyToClipboard', payload: { text: commit.hash } }) },
+      { label: t('graph.copyShortSHA'), action: () => vscode.postMessage({ type: 'copyToClipboard', payload: { text: commit.abbreviatedHash } }) },
       { label: t('graph.copyCommitInfo'), action: () => vscode.postMessage({ type: 'copyToClipboard', payload: { text: `${commit.abbreviatedHash} - ${commit.subject}` } }) },
-    ]);
+    );
+    groups.push(copyGroup);
 
     // Flatten groups with separators between them, preceded by a separator if there were refs
     if (refs.length > 0) items.push(sep);
