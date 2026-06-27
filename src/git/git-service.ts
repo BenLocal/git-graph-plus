@@ -137,14 +137,22 @@ export class GitService {
    * auth retry handler to drive VS Code's credential prompt (same flow the
    * SCM panel uses), then retries the command once.
    */
+  // Network operations (fetch/pull/push) run on a much longer timeout than the
+  // local-command default: a first clone-sized fetch or a slow link routinely
+  // exceeds 60s, and killing it with SIGTERM mid-transfer is worse than waiting.
+  private static readonly NETWORK_TIMEOUT_MS = 600_000; // 10 minutes
+
   private async execWithAuthRetry(args: string[], remote?: string): Promise<string> {
+    // Honour a user-raised default if it's larger, but never go below the
+    // network floor.
+    const timeout = Math.max(this.defaultTimeoutMs, GitService.NETWORK_TIMEOUT_MS);
     try {
-      return await this.exec(args);
+      return await this.exec(args, { timeout });
     } catch (err) {
       if (!this.isAuthError(err) || !this.authRetryHandler) throw err;
       const retried = await this.authRetryHandler(remote).catch(() => false);
       if (!retried) throw err;
-      return this.exec(args);
+      return this.exec(args, { timeout });
     }
   }
 

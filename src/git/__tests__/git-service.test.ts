@@ -539,6 +539,17 @@ describe('GitService', () => {
       expect((service as any).isAuthError('string error')).toBe(false);
     });
 
+    it('execWithAuthRetry runs network commands on the longer network timeout', async () => {
+      let seenTimeout: number | undefined;
+      (service as any).exec = async (_args: string[], opts?: { timeout?: number }) => {
+        seenTimeout = opts?.timeout;
+        return '';
+      };
+      // Default local timeout is 60s; network ops should get a much larger one.
+      await (service as any).execWithAuthRetry(['fetch', 'origin']);
+      expect(seenTimeout).toBeGreaterThanOrEqual(600_000);
+    });
+
     it('execWithAuthRetry passes through non-auth errors without invoking handler', async () => {
       const handler = vi.fn(async () => true);
       service.setAuthRetryHandler(handler);
