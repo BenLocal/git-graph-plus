@@ -7,16 +7,24 @@ class BranchStore {
   stashes = $state<StashEntry[]>([]);
   worktrees = $state<WorktreeInfo[]>([]);
 
+  // Derived so they only recompute when `branches` changes, not on every
+  // access. currentBranch in particular is read many times while building a
+  // single context menu, where the old plain-getter Array.find() re-ran each
+  // time.
+  private _localBranches = $derived(this.branches.filter((b) => !b.remote));
+  private _remoteBranches = $derived(this.branches.filter((b) => !!b.remote));
+  private _currentBranch = $derived(this.branches.find((b) => b.current));
+
   get localBranches(): BranchInfo[] {
-    return this.branches.filter((b) => !b.remote);
+    return this._localBranches;
   }
 
   get remoteBranches(): BranchInfo[] {
-    return this.branches.filter((b) => !!b.remote);
+    return this._remoteBranches;
   }
 
   get currentBranch(): BranchInfo | undefined {
-    return this.branches.find((b) => b.current);
+    return this._currentBranch;
   }
 
   setData(data: BranchData) {
