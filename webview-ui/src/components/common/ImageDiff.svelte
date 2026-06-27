@@ -59,16 +59,18 @@
           ? Math.floor(msg.payload.base64.length * 3 / 4)
           : 0;
 
-        // Match by ref to avoid race condition
+        // Match by ref to avoid race condition. The onload guards (oldImage ===
+        // dataUrl) drop a late-arriving decode whose image has since been
+        // replaced by a newer file, so stale dimensions can't overwrite current.
         if (msg.payload.ref === oldRef) {
           oldImage = dataUrl;
           if (dataUrl) {
-            loadImageInfo(dataUrl, bytes, (info) => { oldImageInfo = info; });
+            loadImageInfo(dataUrl, bytes, (info) => { if (oldImage === dataUrl) oldImageInfo = info; });
           }
         } else if (msg.payload.ref === newRef) {
           newImage = dataUrl;
           if (dataUrl) {
-            loadImageInfo(dataUrl, bytes, (info) => { newImageInfo = info; });
+            loadImageInfo(dataUrl, bytes, (info) => { if (newImage === dataUrl) newImageInfo = info; });
           }
         }
       }

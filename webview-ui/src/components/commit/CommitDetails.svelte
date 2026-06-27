@@ -238,6 +238,9 @@
     document.removeEventListener('mouseup', stopResize);
     document.body.style.userSelect = '';
     document.body.style.cursor = '';
+    // A hover-preview timer may still be pending when the panel closes; without
+    // this it fires post-unmount and posts a now-pointless getCommitData.
+    if (previewTimeout) clearTimeout(previewTimeout);
   });
 
   // Request commit diff only when hash actually changes (not on object reference changes from fullRefresh)
