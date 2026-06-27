@@ -354,6 +354,12 @@ export class GitService {
       }, timeoutMs);
 
       if (options?.stdin) {
+        // git may close stdin before consuming everything (e.g. it rejects a
+        // patch early). The resulting EPIPE surfaces as a writable-stream
+        // 'error' event; without a listener Node rethrows it as an
+        // uncaughtException and takes down the extension host. The process
+        // exit is handled by the 'close'/'error' handlers below, so swallow it.
+        proc.stdin.on('error', () => { /* EPIPE on early git exit */ });
         proc.stdin.write(options.stdin);
         proc.stdin.end();
       }
