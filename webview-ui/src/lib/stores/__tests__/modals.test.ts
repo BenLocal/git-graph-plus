@@ -199,4 +199,36 @@ describe('modalStore.closeAll', () => {
     expect(modalStore.push.show).toBe(false);
     expect(modalStore.flowFinish.show).toBe(false);
   });
+
+  it('closeAll covers every modal anyOpen tracks', () => {
+    // Open one representative for each modal, then assert closeAll clears them
+    // all. Because anyOpen is derived from MODAL_KEYS, a modal that closeAll
+    // forgets (the failure mode this guards against) leaves anyOpen true here.
+    modalStore.openDeleteBranch('b');
+    modalStore.openDeleteTag('t');
+    modalStore.openCreateBranch('main');
+    modalStore.openCreateTag('main');
+    modalStore.openMerge('x', 'y');
+    modalStore.openCheckoutRemote('origin/x', 'x');
+    modalStore.openRenameBranch('x');
+    modalStore.openDeleteRemoteBranch('origin', 'x');
+    modalStore.openRemoveWorktree('/p', 'x');
+    modalStore.openStashApply(0, 'm', false);
+    modalStore.openStashRename(0, 'm');
+    modalStore.openStashSave();
+    modalStore.openStashRestore(0, 'm', ['a']);
+    modalStore.openAmend({ hash: 'h', subject: 's', message: 'm', isPushed: false });
+    modalStore.openSetUpstream('x');
+    modalStore.openFetch();
+    modalStore.openPull();
+    modalStore.openPush();
+    modalStore.openFlowInit();
+    modalStore.openFlowStart('feature');
+    modalStore.openFlowFinish('feature', 'feature/x');
+    modalStore.openPushTag('v1');
+    expect(modalStore.anyOpen).toBe(true);
+
+    modalStore.closeAll();
+    expect(modalStore.anyOpen).toBe(false);
+  });
 });

@@ -115,14 +115,20 @@ class ModalStore {
   openPushTag(tagName: string, remote = 'origin') { this.pushTag = { show: true, tagName, remote }; }
   closePushTag() { this.pushTag = { show: false, tagName: '', remote: 'origin' }; }
 
+  // Single source of truth for "which fields are modals". anyOpen derives from
+  // this instead of a hand-maintained OR-chain that historically forgot newly
+  // added modals (e.g. amend). Svelte compiles class $state fields to prototype
+  // getters, so they aren't enumerable on the instance and must be listed by
+  // name; reading this[key].show through the getter keeps anyOpen reactive.
+  private static readonly MODAL_KEYS = [
+    'deleteBranch', 'deleteTag', 'createBranch', 'createTag', 'merge', 'checkoutRemote',
+    'renameBranch', 'deleteRemoteBranch', 'removeWorktree', 'stashApply', 'stashRename',
+    'stashSave', 'stashRestore', 'amend', 'setUpstream', 'fetch', 'pull', 'push',
+    'flowInit', 'flowStart', 'flowFinish', 'pushTag',
+  ] as const;
+
   get anyOpen(): boolean {
-    return this.amend.show ||
-      this.deleteBranch.show || this.deleteTag.show || this.createBranch.show ||
-      this.createTag.show || this.merge.show || this.checkoutRemote.show ||
-      this.renameBranch.show || this.deleteRemoteBranch.show || this.removeWorktree.show ||
-      this.stashApply.show || this.stashRename.show || this.stashSave.show || this.stashRestore.show ||
-      this.setUpstream.show || this.fetch.show || this.pull.show || this.push.show ||
-      this.flowInit.show || this.flowStart.show || this.flowFinish.show || this.pushTag.show;
+    return ModalStore.MODAL_KEYS.some(k => (this[k] as { show: boolean }).show);
   }
 
   /** Map of WebviewMessage type → close fn. When the extension reports an
