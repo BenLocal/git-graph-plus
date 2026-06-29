@@ -448,6 +448,25 @@ describe('CommitDetails — file tree & diff', () => {
     expect((req!.data as { payload: { file: string } }).payload.file).toBe('a.ts');
   });
 
+  it('right-clicking a file outlines it (context-active) until the menu closes', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'a.ts', status: 'M' }]);
+    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
+      .find(t => /change/i.test(t.textContent ?? ''))!;
+    await fireEvent.click(changesTab);
+    await waitFor(() => container.querySelector('.file-item'));
+
+    const fileBtn = container.querySelector<HTMLButtonElement>('.file-item')!;
+    expect(fileBtn.classList.contains('context-active')).toBe(false);
+
+    await fireEvent.contextMenu(fileBtn);
+    expect(fileBtn.classList.contains('context-active')).toBe(true);
+
+    // Closing the context menu (Escape) drops the outline.
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(fileBtn.classList.contains('context-active')).toBe(false));
+  });
+
   it('renders the colored status badge for each file', async () => {
     const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
     deliverCommitDiff('h1', [

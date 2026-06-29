@@ -233,6 +233,26 @@ describe('MainPanel message routing', () => {
     expect(rightRef).toBe('2222222');
   });
 
+  it('revealInExplorer resolves the repo path and runs revealFileInOS', async () => {
+    const vscode = await import('vscode');
+
+    await dispatch({ type: 'revealInExplorer', payload: { file: 'src/app.ts' } });
+
+    const call = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(c => c[0] === 'revealFileInOS')!;
+    expect(call).toBeDefined();
+    expect((call[1] as { fsPath: string }).fsPath).toBe('/repo/src/app.ts');
+  });
+
+  it('copyFilePath copies the absolute path to the clipboard', async () => {
+    const vscode = await import('vscode');
+
+    await dispatch({ type: 'copyFilePath', payload: { file: 'src/app.ts' } });
+
+    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/repo/src/app.ts');
+    expect(postedOfType('operationComplete').some(m => m.payload?.operation === 'copied')).toBe(true);
+  });
+
   it('getBranches posts branchData with all the sidebar collections', async () => {
     await dispatch({ type: 'getBranches' });
     const data = postedOfType('branchData').at(-1)!;

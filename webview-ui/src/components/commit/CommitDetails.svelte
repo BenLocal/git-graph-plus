@@ -82,6 +82,10 @@
     return (name || email) ? `${name} <${email}>`.trim() : '';
   }
   let fileContextMenu = $state<{ x: number; y: number; items: any[] } | null>(null);
+  // The row a context menu is currently open on, so it stays outlined (like the
+  // commit graph's right-click highlight) until the menu closes. Same key scheme
+  // as `selected`: `${staged|unstaged}:path` for uncommitted rows, plain path otherwise.
+  let contextMenuRowKey = $state<string | null>(null);
 
   // Single entry point for every reverse action. Omitting hunkIndex reverses the
   // whole file; omitting lineIndices reverses the whole hunk (see patch-builder).
@@ -792,6 +796,7 @@
                   <button
                     class="file-item"
                     class:selected={selectedFile === `${staged ? 'staged' : 'unstaged'}:${node.path}`}
+                    class:context-active={contextMenuRowKey === `${staged ? 'staged' : 'unstaged'}:${node.path}`}
                     style="padding-left: {8 + depth * 16 + 18}px;"
                     onclick={() => {
                       const key = `${staged ? 'staged' : 'unstaged'}:${node.path}`;
@@ -812,6 +817,7 @@
                     }}
                     oncontextmenu={(e) => {
                       e.preventDefault();
+                      contextMenuRowKey = `${staged ? 'staged' : 'unstaged'}:${node.path}`;
                       const items: Array<{ label: string; action: () => void; danger?: boolean; separator?: boolean }> = [
                         {
                           label: t('file.open'),
@@ -824,6 +830,19 @@
                           action: () => { vscode.postMessage({ type: 'openDiff', payload: { file: node.path, staged } }); fileContextMenu = null; },
                         });
                       }
+                      items.push({ separator: true, label: '', action: () => {} });
+                      items.push({
+                        label: t('file.revealInExplorer'),
+                        action: () => { vscode.postMessage({ type: 'revealInExplorer', payload: { file: node.path } }); fileContextMenu = null; },
+                      });
+                      items.push({
+                        label: t('file.copyPath'),
+                        action: () => { vscode.postMessage({ type: 'copyFilePath', payload: { file: node.path } }); fileContextMenu = null; },
+                      });
+                      items.push({
+                        label: t('file.copyRelativePath'),
+                        action: () => { vscode.postMessage({ type: 'copyToClipboard', payload: { text: node.path } }); fileContextMenu = null; },
+                      });
                       fileContextMenu = { x: e.clientX, y: e.clientY, items };
                     }}
                   >
@@ -869,6 +888,7 @@
                 <button
                   class="file-item"
                   class:selected={selectedPatchFiles.has(node.path)}
+                  class:context-active={contextMenuRowKey === node.path}
                   style="padding-left: {8 + depth * 16 + 18}px;"
                   onclick={(e) => {
                     if ((e.ctrlKey || e.metaKey) && commit) {
@@ -910,6 +930,7 @@
                   use:tooltip={"Double-click to open in editor"}
                   oncontextmenu={(e) => {
                     e.preventDefault();
+                    contextMenuRowKey = node.path;
                     const items: Array<{ label: string; action: () => void; danger?: boolean; separator?: boolean }> = [];
 
                     // Open file
@@ -999,6 +1020,20 @@
                       }
                     }
 
+                    items.push({ separator: true, label: '', action: () => {} });
+                    items.push({
+                      label: t('file.revealInExplorer'),
+                      action: () => { vscode.postMessage({ type: 'revealInExplorer', payload: { file: node.path } }); fileContextMenu = null; },
+                    });
+                    items.push({
+                      label: t('file.copyPath'),
+                      action: () => { vscode.postMessage({ type: 'copyFilePath', payload: { file: node.path } }); fileContextMenu = null; },
+                    });
+                    items.push({
+                      label: t('file.copyRelativePath'),
+                      action: () => { vscode.postMessage({ type: 'copyToClipboard', payload: { text: node.path } }); fileContextMenu = null; },
+                    });
+
                     fileContextMenu = { x: e.clientX, y: e.clientY, items };
                   }}
                 >
@@ -1018,6 +1053,7 @@
                 <button
                   class="dir-item"
                   class:selected={isFolderSelected(node)}
+                  class:context-active={contextMenuRowKey === node.path}
                   style="padding-left: {8 + depth * 16}px;"
                   onclick={(e) => {
                     if ((e.ctrlKey || e.metaKey) && commit) {
@@ -1042,6 +1078,7 @@
                   oncontextmenu={(e) => {
                     e.preventDefault();
                     if (!commit) return;
+                    contextMenuRowKey = node.path;
                     const folderItems: Array<{ label: string; action: () => void; danger?: boolean; separator?: boolean }> = [
                       {
                         label: t('file.createPatchFromFolder'),
@@ -1125,7 +1162,7 @@
     x={fileContextMenu.x}
     y={fileContextMenu.y}
     items={fileContextMenu.items}
-    onClose={() => { fileContextMenu = null; }}
+    onClose={() => { fileContextMenu = null; contextMenuRowKey = null; }}
   />
 {/if}
 
@@ -1581,6 +1618,12 @@
   .file-item:hover, .dir-item:hover { background: var(--bg-hover); }
   .file-item.selected { background: var(--bg-selected); color: var(--text-selected); }
   .dir-item.selected { background: var(--bg-selected); color: var(--text-selected); }
+  /* Right-clicked row stays outlined while its context menu is open (mirrors the
+     commit graph's right-click highlight) so it's clear which row the menu acts on. */
+  .file-item.context-active, .dir-item.context-active {
+    outline: 1px solid var(--vscode-focusBorder, #007fd4);
+    outline-offset: -1px;
+  }
 
   .dir-item {
     color: var(--text-secondary);

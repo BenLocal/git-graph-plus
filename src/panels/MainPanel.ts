@@ -742,6 +742,17 @@ export class MainPanel {
           await vscode.window.showTextDocument(fileUri, { preview: false });
           break;
         }
+        case 'revealInExplorer': {
+          const fullPath = this.resolveRepoRelativePath(message.payload.file, 'revealInExplorer');
+          await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(fullPath));
+          break;
+        }
+        case 'copyFilePath': {
+          const fullPath = this.resolveRepoRelativePath(message.payload.file, 'copyFilePath');
+          await vscode.env.clipboard.writeText(fullPath);
+          this.post({ type: 'operationComplete', payload: { operation: 'copied', success: true } });
+          break;
+        }
         case 'openScmView': {
           await vscode.commands.executeCommand('workbench.view.scm');
           // When opened alongside the amend modal, return focus to the webview
