@@ -4,6 +4,9 @@
  * Only App.svelte renders the modals, preventing duplication.
  */
 
+import { getVsCodeApi } from '../vscode-api';
+import { dragRebaseMessage, dragMergeMessage } from '../utils/dragDrop';
+
 class ModalStore {
   // ── Delete Branch ──
   deleteBranch = $state({ show: false, name: '' });
@@ -122,6 +125,21 @@ class ModalStore {
   openInteractiveRebase() { this.interactiveRebase = { show: true }; }
   closeInteractiveRebase() { this.interactiveRebase = { show: false }; }
 
+  // ── Drag rebase/merge (shared by graph drop and toolbar Lean Branching) ──
+  // Clean tree → post the op immediately. Dirty tree → stash the pending op so
+  // App.svelte renders DirtyActionModal; on confirm it posts with the chosen
+  // dirty payload. Mirrors the original CommitGraph runDrag/dragDirty flow.
+  dragAction = $state<{ op: 'rebase' | 'merge'; source: string; target: string } | null>(null);
+  runDrag(op: 'rebase' | 'merge', source: string, target: string, dirty: boolean) {
+    if (dirty) {
+      this.dragAction = { op, source, target };
+      return;
+    }
+    const msg = op === 'rebase' ? dragRebaseMessage(source, target) : dragMergeMessage(source, target);
+    getVsCodeApi().postMessage(msg);
+  }
+  closeDragAction() { this.dragAction = null; }
+
   // Single source of truth for "which fields are modals". anyOpen derives from
   // this instead of a hand-maintained OR-chain that historically forgot newly
   // added modals (e.g. amend). Svelte compiles class $state fields to prototype
@@ -135,7 +153,7 @@ class ModalStore {
   ] as const;
 
   get anyOpen(): boolean {
-    return ModalStore.MODAL_KEYS.some(k => (this[k] as { show: boolean }).show);
+    return this.dragAction !== null || ModalStore.MODAL_KEYS.some(k => (this[k] as { show: boolean }).show);
   }
 
   /** Map of WebviewMessage type → close fn. When the extension reports an
@@ -176,6 +194,8 @@ class ModalStore {
       flowAction: () => { this.closeFlowStart(); this.closeFlowFinish(); },
       pushTag: () => this.closePushTag(),
       pushAllTags: () => this.closePushTag(),
+      dragRebase: () => this.closeDragAction(),
+      dragMerge: () => this.closeDragAction(),
     };
     map[source]?.();
   }
@@ -206,6 +226,7 @@ class ModalStore {
     this.closeFlowFinish();
     this.closePushTag();
     this.closeInteractiveRebase();
+    this.closeDragAction();
   }
 }
 

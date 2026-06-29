@@ -95,6 +95,7 @@ export type WebviewMessage =
   | { type: 'flowInit'; payload: { productionBranch: string; developBranch: string; featurePrefix: string; releasePrefix: string; hotfixPrefix: string; versionTagPrefix: string } }
   | { type: 'flowAction'; payload: { flowType: string; action: string; name: string } }
   | { type: 'getFlowBranches' }
+  | { type: 'getDefaultBranch' }
   | { type: 'getSubmodules' }
   | { type: 'submoduleUpdate' }
   | { type: 'getLfsFiles' }
@@ -169,6 +170,7 @@ export type ExtensionMessage =
   | { type: 'conflictData'; payload: { operation: string; files: Array<{ path: string; resolved: boolean }> } }
   | { type: 'flowStatus'; payload: { installed: boolean; initialized: boolean; config: { productionBranch: string; developBranch: string; featurePrefix: string; releasePrefix: string; hotfixPrefix: string; versionTagPrefix: string } | null } }
   | { type: 'flowBranches'; payload: { features: string[]; releases: string[]; hotfixes: string[] } }
+  | { type: 'defaultBranch'; payload: { name: string | null } }
   | { type: 'showModal'; payload:
     | { modal: 'deleteBranch'; branchName: string }
     | { modal: 'deleteTag'; tagName: string }

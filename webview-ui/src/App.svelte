@@ -47,6 +47,8 @@ import AmendModal from './components/modals/AmendModal.svelte';
   import BisectBanner from './components/common/BisectBanner.svelte';
   import type { FlowConfig } from './lib/types';
   import { tooltip } from './lib/actions/tooltip';
+  import DirtyActionModal from './components/modals/DirtyActionModal.svelte';
+  import { dragRebaseMessage, dragMergeMessage } from './lib/utils/dragDrop';
 
   const vscode = getVsCodeApi();
 
@@ -685,6 +687,21 @@ import AmendModal from './components/modals/AmendModal.svelte';
     startPoint={addWorktreeStartPoint}
     onClose={() => { showAddWorktreeModal = false; }}
     onAdd={(path, branch, newBranch) => { showAddWorktreeModal = false; vscode.postMessage({ type: 'worktreeAdd', payload: { path, branch, newBranch } }); }}
+  />
+{/if}
+
+{#if modalStore.dragAction}
+  <DirtyActionModal
+    title={t('dirtyAction.title')}
+    confirmLabel={t('dirtyAction.continue')}
+    onConfirm={(dirty) => {
+      const d = modalStore.dragAction!;
+      modalStore.closeDragAction();
+      vscode.postMessage(d.op === 'rebase'
+        ? dragRebaseMessage(d.source, d.target, dirty)
+        : dragMergeMessage(d.source, d.target, dirty));
+    }}
+    onClose={() => { modalStore.closeDragAction(); }}
   />
 {/if}
 

@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const postMessage = vi.fn();
+vi.mock('../../vscode-api', () => ({
+  getVsCodeApi: () => ({ postMessage }),
+}));
+
 import { modalStore } from '../modals.svelte';
 
 // modalStore is a singleton, so each test must close everything before it
@@ -189,6 +195,35 @@ describe('modalStore.closeForSource', () => {
       expect(() => modalStore.closeForSource(source)).not.toThrow();
     }
     expect(modalStore.anyOpen).toBe(false);
+  });
+});
+
+describe('modalStore.runDrag', () => {
+  beforeEach(() => {
+    postMessage.mockClear();
+    modalStore.closeDragAction();
+  });
+
+  it('posts a dragRebase message immediately when tree is clean', () => {
+    modalStore.runDrag('rebase', 'feat', 'main', false);
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'dragRebase', payload: expect.objectContaining({ source: 'feat', target: 'main' }) }),
+    );
+    expect(modalStore.dragAction).toBeNull();
+  });
+
+  it('posts a dragMerge message immediately when tree is clean', () => {
+    modalStore.runDrag('merge', 'feat', 'main', false);
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'dragMerge', payload: expect.objectContaining({ source: 'feat', target: 'main' }) }),
+    );
+  });
+
+  it('defers to dragAction (DirtyActionModal) when tree is dirty', () => {
+    modalStore.runDrag('rebase', 'feat', 'main', true);
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(modalStore.dragAction).toEqual({ op: 'rebase', source: 'feat', target: 'main' });
+    expect(modalStore.anyOpen).toBe(true);
   });
 });
 

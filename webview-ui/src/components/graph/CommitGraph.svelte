@@ -30,7 +30,7 @@
   import RebaseTargetModal from '../modals/RebaseTargetModal.svelte';
   import DirtyActionModal from '../modals/DirtyActionModal.svelte';
   import type { DirtyPayload } from '../../lib/utils/dirty-payload';
-  import { resolveDrop, dragRebaseMessage, dragMergeMessage } from '../../lib/utils/dragDrop';
+  import { resolveDrop } from '../../lib/utils/dragDrop';
   import { computeNavigationTarget, computeScrollTop, computeJumpTarget, isRowOffscreen, type ScrollAlign } from '../../lib/graph-navigation';
   import LinkifiedText from '../common/LinkifiedText.svelte';
   import { dispatchInteractiveRebase } from '../../lib/interactive-rebase';
@@ -245,8 +245,6 @@
   let rebaseTargetBranches = $state<string[] | null>(null);
   let rebaseDirtyBranch = $state<string | null>(null);
   let pendingRebaseBase = $state<string | null>(null);
-  let dragDirty = $state<{ op: 'rebase' | 'merge'; source: string; target: string } | null>(null);
-
   let showCheckoutCommitModal = $state(false);
   let checkoutCommitHash = $state('');
 
@@ -688,28 +686,16 @@
       items: [
         {
           label: t('graph.dragRebaseOnto', { source: res.source, target: res.target }),
-          action: () => { runDrag('rebase', res.source, res.target, hasUncommitted); },
+          action: () => { modalStore.runDrag('rebase', res.source, res.target, hasUncommitted); },
         },
         {
           label: t('graph.dragMergeInto', { source: res.source, target: res.target }),
-          action: () => { runDrag('merge', res.source, res.target, hasUncommitted); },
+          action: () => { modalStore.runDrag('merge', res.source, res.target, hasUncommitted); },
         },
         { separator: true, label: '', action: () => {} },
         { label: t('graph.cancelSelection'), action: () => {} },
       ],
     };
-  }
-
-  // Clean tree → post the drag op directly. Dirty → collect the stash/keep/discard
-  // choice via DirtyActionModal first, then post with that payload.
-  function runDrag(op: 'rebase' | 'merge', source: string, target: string, dirty: boolean) {
-    if (dirty) {
-      dragDirty = { op, source, target };
-    } else if (op === 'rebase') {
-      vscode.postMessage(dragRebaseMessage(source, target));
-    } else {
-      vscode.postMessage(dragMergeMessage(source, target));
-    }
   }
 
   // Route an interactive-rebase request to the GUI modal or the classic
@@ -1789,21 +1775,6 @@
         contextMenuHash = null;
       }
     }}
-  />
-{/if}
-
-{#if dragDirty}
-  <DirtyActionModal
-    title={t('dirtyAction.title')}
-    confirmLabel={t('dirtyAction.continue')}
-    onConfirm={(dirty) => {
-      const d = dragDirty!;
-      dragDirty = null;
-      vscode.postMessage(d.op === 'rebase'
-        ? dragRebaseMessage(d.source, d.target, dirty)
-        : dragMergeMessage(d.source, d.target, dirty));
-    }}
-    onClose={() => { dragDirty = null; }}
   />
 {/if}
 

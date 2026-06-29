@@ -18,7 +18,7 @@ const getPush = (c: HTMLElement) => iconBtn(c, 'arrow-up');
 const getRefresh = (c: HTMLElement) => iconBtn(c, 'refresh');
 const getStash = (c: HTMLElement) => iconBtn(c, 'archive');
 const getFlow = (c: HTMLElement) =>
-  c.querySelector<HTMLButtonElement>('.flow-wrapper .toolbar-btn')!;
+  c.querySelector<HTMLButtonElement>('.flow-wrapper .split-chevron')!;
 
 function resetStores() {
   branchStore.branches = [];

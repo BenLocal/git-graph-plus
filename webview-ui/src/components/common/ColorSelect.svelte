@@ -195,7 +195,9 @@
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     z-index: 2100;
-    overflow: hidden;
+    max-height: 240px;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .color-select-option {

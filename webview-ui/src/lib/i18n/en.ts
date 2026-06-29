@@ -568,6 +568,11 @@ export const en: Record<string, string> = {
 
   // Git Flow
   'flow.button': 'Git Flow',
+  'flow.newBranch': 'New Branch',
+  'flow.newWorktree': 'New Worktree',
+  'flow.group': 'Git Flow',
+  'flow.leanSync': "Sync '{current}' (Rebase on '{branch}')",
+  'flow.leanFinish': "Finish '{current}' (Merge into '{branch}')",
   'flow.notInstalled': 'git-flow is not installed.',
   'flow.initialize': 'Initialize Git Flow',
   'flow.startFeature': 'Start Feature',

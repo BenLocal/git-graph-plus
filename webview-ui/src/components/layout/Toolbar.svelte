@@ -8,6 +8,7 @@
   import NoRemotesErrorModal from '../modals/NoRemotesErrorModal.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
   import { modalStore } from '../../lib/stores/modals.svelte';
+  import { commitStore } from '../../lib/stores/commits.svelte';
   import { samePath } from '../../lib/utils/path';
   import type { FlowStatus, FlowBranches } from '../../lib/types';
 
@@ -21,6 +22,7 @@
   let showAddRemote = $state(false);
   let showRepoDropdown = $state(false);
   let showFlowDropdown = $state(false);
+  let defaultBranch = $state<string | null>(null);
   let flowStatus = $state<FlowStatus | null>(null);
   let flowBranches = $state<FlowBranches>({ features: [], releases: [], hotfixes: [] });
   let showNoRemotesError = $state(false);
@@ -59,6 +61,7 @@
     if (showFlowDropdown) {
       vscode.postMessage({ type: 'checkFlowStatus' });
       vscode.postMessage({ type: 'getFlowBranches' });
+      vscode.postMessage({ type: 'getDefaultBranch' });
     }
   }
 
@@ -82,6 +85,7 @@
       }
       if (msg.type === 'flowStatus') flowStatus = msg.payload;
       if (msg.type === 'flowBranches') flowBranches = msg.payload;
+      if (msg.type === 'defaultBranch') defaultBranch = msg.payload.name;
     }
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
@@ -93,7 +97,54 @@
   let ahead = $derived(branchStore.currentBranch?.ahead ?? 0);
   let behind = $derived(branchStore.currentBranch?.behind ?? 0);
   let activeRepoInfo = $derived(uiStore.repos.find(r => samePath(r.path, uiStore.activeRepo)) ?? uiStore.repos[0]);
+
+  const currentBranchName = $derived(branchStore.currentBranch?.name ?? null);
+  // git reports non-branch HEAD states as parenthesized pseudo-labels
+  // ("(HEAD detached at …)", "(no branch, rebasing main)", "(no branch, bisect …)").
+  // None of these are checkout-able start points, so fall back to the SHA.
+  const isDetached = $derived(!!currentBranchName?.startsWith('('));
+  const createStartPoint = $derived(
+    isDetached || !currentBranchName ? (branchStore.currentBranch?.hash ?? 'HEAD') : currentBranchName,
+  );
+  const hasUncommitted = $derived(commitStore.commits.some(c => c.hash === 'UNCOMMITTED'));
+  // Lean Sync/Finish need a real default branch that isn't the current one.
+  const leanEnabled = $derived(
+    !!defaultBranch && !isDetached && !!currentBranchName && currentBranchName !== defaultBranch,
+  );
+
+  function createBranchFromCurrent() {
+    modalStore.openCreateBranch(createStartPoint);
+  }
+  function newWorktree() {
+    vscode.postMessage({ type: 'worktreeAddModalRequest', payload: { startPoint: createStartPoint } });
+  }
+  function leanSync() {
+    if (leanEnabled) modalStore.runDrag('rebase', currentBranchName!, defaultBranch!, hasUncommitted);
+  }
+  function leanFinish() {
+    if (leanEnabled) modalStore.runDrag('merge', currentBranchName!, defaultBranch!, hasUncommitted);
+  }
+
+  // Esc closes whichever toolbar dropdown is open (mirrors the backdrop click).
+  // When a dropdown is open it is the foreground layer, so Esc must dismiss
+  // only it — stop the event so App's global Esc handler doesn't also close
+  // the bottom panel underneath. Toolbar's <svelte:window> listener is
+  // registered before App's (children mount before the parent's onMount), so
+  // stopImmediatePropagation here reliably pre-empts that handler.
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    if (!showFlowDropdown && !showRepoDropdown) return;
+    showFlowDropdown = false;
+    showRepoDropdown = false;
+    // Drop focus from the trigger button so the keyboard :focus-visible
+    // outline doesn't linger on it after the menu is dismissed.
+    (document.activeElement as HTMLElement | null)?.blur();
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div class="toolbar">
   <div class="toolbar-left">
@@ -220,85 +271,112 @@
     </button>
     <span class="separator"></span>
     <div class="flow-wrapper">
-      <button
-        class="toolbar-btn"
-        onclick={openFlowDropdown}
-        disabled={uiStore.operating !== null}
-        aria-label={t('flow.button')}
-        use:tooltip={t('flow.button')}
-      >
-        <i class="codicon codicon-source-control"></i>
-        <i class="codicon codicon-chevron-down flow-chevron"></i>
-      </button>
+      <div class="split-btn">
+        <button
+          class="toolbar-btn split-main"
+          onclick={createBranchFromCurrent}
+          disabled={uiStore.operating !== null}
+          aria-label={t('flow.newBranch')}
+          use:tooltip={t('flow.newBranch')}
+        >
+          <i class="codicon codicon-git-branch"></i>
+        </button>
+        <button
+          class="toolbar-btn split-chevron"
+          onclick={openFlowDropdown}
+          disabled={uiStore.operating !== null}
+          aria-label={t('flow.group')}
+          use:tooltip={t('flow.group')}
+        >
+          <i class="codicon codicon-chevron-down flow-chevron"></i>
+        </button>
+      </div>
       {#if showFlowDropdown}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="flow-dropdown-backdrop" onclick={() => { showFlowDropdown = false; }}></div>
         <div class="flow-dropdown">
-          {#if !flowStatus}
-            <div class="flow-dropdown-item disabled">Loading...</div>
-          {:else if !flowStatus.installed}
-            <div class="flow-dropdown-item disabled">{t('flow.notInstalled')}</div>
-          {:else if !flowStatus.initialized}
-            <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowInit(); }}>
-              {t('flow.initialize')}
+          <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; createBranchFromCurrent(); }}>
+            {t('flow.newBranch')}
+          </button>
+          <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; newWorktree(); }}>
+            {t('flow.newWorktree')}
+          </button>
+          {#if leanEnabled}
+            <div class="flow-dropdown-separator"></div>
+            <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; leanSync(); }}>
+              {t('flow.leanSync', { current: currentBranchName ?? '', branch: defaultBranch ?? '' })}
             </button>
-          {:else}
-            <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowStart('feature'); }}>
-              {t('flow.startFeature')}
+            <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; leanFinish(); }}>
+              {t('flow.leanFinish', { current: currentBranchName ?? '', branch: defaultBranch ?? '' })}
             </button>
-            <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowStart('release'); }}>
-              {t('flow.startRelease')}
-            </button>
-            <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowStart('hotfix'); }}>
-              {t('flow.startHotfix')}
-            </button>
-            {#if flowBranches.features.length || flowBranches.releases.length || flowBranches.hotfixes.length}
-              <div class="flow-dropdown-separator"></div>
-              {#if flowBranches.features.length}
-                <div class="flow-submenu-wrapper">
-                  <button class="flow-dropdown-item flow-submenu-trigger">
-                    {t('flow.finishFeature')}<i class="codicon codicon-chevron-right flow-submenu-arrow"></i>
-                  </button>
-                  <div class="flow-submenu">
-                    {#each flowBranches.features as branch}
-                      <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowFinish('feature', branch); }}>
-                        {branch}
-                      </button>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-              {#if flowBranches.releases.length}
-                <div class="flow-submenu-wrapper">
-                  <button class="flow-dropdown-item flow-submenu-trigger">
-                    {t('flow.finishRelease')}<i class="codicon codicon-chevron-right flow-submenu-arrow"></i>
-                  </button>
-                  <div class="flow-submenu">
-                    {#each flowBranches.releases as branch}
-                      <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowFinish('release', branch); }}>
-                        {branch}
-                      </button>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-              {#if flowBranches.hotfixes.length}
-                <div class="flow-submenu-wrapper">
-                  <button class="flow-dropdown-item flow-submenu-trigger">
-                    {t('flow.finishHotfix')}<i class="codicon codicon-chevron-right flow-submenu-arrow"></i>
-                  </button>
-                  <div class="flow-submenu">
-                    {#each flowBranches.hotfixes as branch}
-                      <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowFinish('hotfix', branch); }}>
-                        {branch}
-                      </button>
-                    {/each}
-                  </div>
-                </div>
-              {/if}
-            {/if}
           {/if}
+          <div class="flow-dropdown-separator"></div>
+          <div class="flow-submenu-wrapper">
+            <button class="flow-dropdown-item flow-submenu-trigger">
+              {t('flow.group')}<i class="codicon codicon-chevron-right flow-submenu-arrow"></i>
+            </button>
+            <div class="flow-submenu">
+              {#if !flowStatus}
+                <div class="flow-dropdown-item disabled">Loading...</div>
+              {:else if !flowStatus.installed}
+                <div class="flow-dropdown-item disabled">{t('flow.notInstalled')}</div>
+              {:else if !flowStatus.initialized}
+                <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowInit(); }}>
+                  {t('flow.initialize')}
+                </button>
+              {:else}
+                <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowStart('feature'); }}>
+                  {t('flow.startFeature')}
+                </button>
+                <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowStart('release'); }}>
+                  {t('flow.startRelease')}
+                </button>
+                <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowStart('hotfix'); }}>
+                  {t('flow.startHotfix')}
+                </button>
+                {#if flowBranches.features.length || flowBranches.releases.length || flowBranches.hotfixes.length}
+                  <div class="flow-dropdown-separator"></div>
+                  {#if flowBranches.features.length}
+                    <div class="flow-submenu-wrapper">
+                      <button class="flow-dropdown-item flow-submenu-trigger">
+                        {t('flow.finishFeature')}<i class="codicon codicon-chevron-right flow-submenu-arrow"></i>
+                      </button>
+                      <div class="flow-submenu">
+                        {#each flowBranches.features as branch}
+                          <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowFinish('feature', branch); }}>{branch}</button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+                  {#if flowBranches.releases.length}
+                    <div class="flow-submenu-wrapper">
+                      <button class="flow-dropdown-item flow-submenu-trigger">
+                        {t('flow.finishRelease')}<i class="codicon codicon-chevron-right flow-submenu-arrow"></i>
+                      </button>
+                      <div class="flow-submenu">
+                        {#each flowBranches.releases as branch}
+                          <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowFinish('release', branch); }}>{branch}</button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+                  {#if flowBranches.hotfixes.length}
+                    <div class="flow-submenu-wrapper">
+                      <button class="flow-dropdown-item flow-submenu-trigger">
+                        {t('flow.finishHotfix')}<i class="codicon codicon-chevron-right flow-submenu-arrow"></i>
+                      </button>
+                      <div class="flow-submenu">
+                        {#each flowBranches.hotfixes as branch}
+                          <button class="flow-dropdown-item" onclick={() => { showFlowDropdown = false; modalStore.openFlowFinish('hotfix', branch); }}>{branch}</button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+                {/if}
+              {/if}
+            </div>
+          </div>
         </div>
       {/if}
     </div>
@@ -588,6 +666,24 @@
     position: relative;
   }
 
+  .split-btn {
+    display: flex;
+    align-items: center;
+  }
+
+  .split-main {
+    min-width: 30px;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .split-chevron {
+    min-width: 22px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+
   .flow-chevron {
     font-size: 10px;
     margin-left: -2px;
@@ -608,13 +704,14 @@
     top: 100%;
     right: 0;
     margin-top: 4px;
-    min-width: 220px;
+    min-width: 280px;
     background: var(--vscode-menu-background, var(--bg-secondary));
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--vscode-menu-border, var(--border-color));
     border-radius: 4px;
     padding: 4px 0;
     z-index: 100;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    font-size: var(--vscode-font-size, 13px);
   }
 
   :global(body.vscode-light) .flow-dropdown {
@@ -622,30 +719,34 @@
   }
 
   .flow-dropdown-item {
-    display: block;
+    display: flex;
+    align-items: center;
     width: 100%;
-    padding: 6px 12px;
+    padding: 3px 14px;
     font-size: inherit;
     text-align: left;
     background: none;
     border: none;
-    color: var(--text-primary);
+    color: var(--vscode-menu-foreground, var(--text-primary));
     cursor: pointer;
     white-space: nowrap;
+    transition: background 0.08s;
   }
 
   .flow-dropdown-item:hover:not(.disabled) {
-    background: var(--vscode-menu-selectionBackground, rgba(128, 128, 128, 0.2));
+    background: var(--vscode-menu-selectionBackground, var(--bg-selected));
+    color: var(--vscode-menu-selectionForeground, var(--text-selected));
   }
 
   .flow-dropdown-item.disabled {
-    color: var(--text-secondary);
+    opacity: 0.5;
     cursor: default;
   }
 
   .flow-dropdown-separator {
-    border-top: 1px solid var(--border-color);
-    margin: 4px 0;
+    height: 1px;
+    margin: 4px 8px;
+    background: var(--border-color);
   }
 
   .flow-submenu-wrapper {
@@ -659,14 +760,15 @@
   }
 
   .flow-submenu-arrow {
-    font-size: 10px;
-    opacity: 0.6;
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.5;
   }
 
   .flow-submenu {
     display: none;
     position: absolute;
-    top: -4px;
+    top: -5px;
     right: 100%;
     margin-right: 2px;
     min-width: 180px;
@@ -682,7 +784,20 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 
-  .flow-submenu-wrapper:hover .flow-submenu {
+  /* Transparent bridge spanning the gap between the trigger and the flyout
+     (which opens to the left). Without it, the cursor crossing the 2px
+     margin briefly hovers neither element and the pure-CSS :hover flyout
+     snaps shut before the pointer reaches it. */
+  .flow-submenu::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 100%;
+    width: 8px;
+    height: 100%;
+  }
+
+  .flow-submenu-wrapper:hover > .flow-submenu {
     display: block;
   }
 </style>
