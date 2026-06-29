@@ -336,6 +336,185 @@ describe('InteractiveRebase — reordering', () => {
   });
 });
 
+describe('InteractiveRebase — layout', () => {
+  it('renders in a wider modal than the default 480px', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([commit({ hash: 'c1', subject: 'one' })]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    const modal = container.querySelector<HTMLDivElement>('.modal')!;
+    // happy-dom doesn't parse CSS min() into style.width, so assert on the
+    // inline style attribute the component sets.
+    expect(modal.getAttribute('style')).toContain('760');
+  });
+});
+
+describe('InteractiveRebase — keyboard navigation', () => {
+  it('selects the first row by default', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    const items = container.querySelectorAll('.todo-item');
+    expect(items[0].classList.contains('selected')).toBe(true);
+    expect(items[1].classList.contains('selected')).toBe(false);
+  });
+
+  it('arrow keys move the selection down and up', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+      commit({ hash: 'c3', subject: 'three' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+
+    await fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(container.querySelectorAll('.todo-item')[1].classList.contains('selected')).toBe(true);
+    });
+
+    await fireEvent.keyDown(window, { key: 'ArrowUp' });
+    await waitFor(() => {
+      expect(container.querySelectorAll('.todo-item')[0].classList.contains('selected')).toBe(true);
+    });
+  });
+
+  it('j / k do not move the selection', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    await fireEvent.keyDown(window, { key: 'j' });
+    await fireEvent.keyDown(window, { key: 'k' });
+    expect(container.querySelectorAll('.todo-item')[0].classList.contains('selected')).toBe(true);
+  });
+
+  it('arrow keys clamp the selection at the ends', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+
+    // Up at the top stays on row 0.
+    await fireEvent.keyDown(window, { key: 'ArrowUp' });
+    expect(container.querySelectorAll('.todo-item')[0].classList.contains('selected')).toBe(true);
+
+    // Down twice clamps at the last row.
+    await fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await waitFor(() => {
+      expect(container.querySelectorAll('.todo-item')[1].classList.contains('selected')).toBe(true);
+    });
+  });
+
+  it('action keys set the selected row\'s action', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    // Select row 1, then press 'd' for drop.
+    await fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await fireEvent.keyDown(window, { key: 'd' });
+    await waitFor(() => {
+      const badges = container.querySelectorAll<HTMLButtonElement>('.action-badge');
+      expect(badges[1].textContent?.toLowerCase()).toContain('drop');
+    });
+  });
+
+  it('squash / fixup keys are ignored on the first row', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    // Row 0 is selected by default; 's' must not turn it into squash.
+    await fireEvent.keyDown(window, { key: 's' });
+    const badges = container.querySelectorAll<HTMLButtonElement>('.action-badge');
+    expect(badges[0].textContent?.toLowerCase()).toContain('pick');
+  });
+
+  it('Shift+ArrowDown reorders the selected row down and selection follows', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelectorAll('.todo-item').length === 2);
+    await fireEvent.keyDown(window, { key: 'ArrowDown', shiftKey: true });
+    await waitFor(() => {
+      const hashes = Array.from(container.querySelectorAll('.todo-hash')).map(h => h.textContent?.trim());
+      expect(hashes).toEqual(['c2', 'c1']);
+      // selection follows the moved row to index 1
+      expect(container.querySelectorAll('.todo-item')[1].classList.contains('selected')).toBe(true);
+    });
+  });
+
+  it('Ctrl+Enter starts the rebase when there are changes', async () => {
+    const onClose = vi.fn();
+    const { container } = render(InteractiveRebase, { ...baseProps, onClose });
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    // Make a change so the rebase is allowed to start.
+    await fireEvent.keyDown(window, { key: 'ArrowDown' });
+    await fireEvent.keyDown(window, { key: 'd' });
+    globalThis.__postedMessages = [];
+    await fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => {
+      const req = globalThis.__postedMessages.find(
+        (m) => (m.data as { type?: string }).type === 'interactiveRebase'
+      );
+      expect(req).toBeDefined();
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('does not start the rebase via Ctrl+Enter when nothing changed', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    globalThis.__postedMessages = [];
+    await fireEvent.keyDown(window, { key: 'Enter', ctrlKey: true });
+    const req = globalThis.__postedMessages.find(
+      (m) => (m.data as { type?: string }).type === 'interactiveRebase'
+    );
+    expect(req).toBeUndefined();
+  });
+
+  it('ignores action shortcuts while typing in a message textarea', async () => {
+    const { container } = render(InteractiveRebase, baseProps);
+    deliverCommits([
+      commit({ hash: 'c1', subject: 'one' }),
+      commit({ hash: 'c2', subject: 'two' }),
+    ]);
+    await waitFor(() => container.querySelector('.todo-item'));
+    // Turn row 1 into reword to get a textarea.
+    const badges = container.querySelectorAll<HTMLButtonElement>('.action-badge');
+    await fireEvent.click(badges[1]);
+    const opts = container.querySelectorAll<HTMLButtonElement>('.action-option');
+    await fireEvent.click(Array.from(opts).find(o => o.textContent?.toLowerCase().includes('reword'))!);
+    const textarea = await waitFor(() => container.querySelector<HTMLTextAreaElement>('.todo-message-input')!);
+    // Pressing 'd' inside the textarea must not drop row 0.
+    await fireEvent.keyDown(textarea, { key: 'd' });
+    const firstBadge = container.querySelectorAll<HTMLButtonElement>('.action-badge')[0];
+    expect(firstBadge.textContent?.toLowerCase()).toContain('pick');
+  });
+});
+
 describe('InteractiveRebase — autosquash', () => {
   it('auto-arranges fixup! commits under their target on load (toggle on)', async () => {
     const { container } = render(InteractiveRebase, baseProps);

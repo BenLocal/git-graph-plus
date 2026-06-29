@@ -7,9 +7,11 @@
     title: string;
     onClose: () => void;
     children: Snippet;
+    /** Override the default 480px dialog width (e.g. "min(760px, 92vw)"). */
+    width?: string;
   }
 
-  let { title, onClose, children }: Props = $props();
+  let { title, onClose, children, width }: Props = $props();
   let dialogEl: HTMLDivElement | undefined = $state();
   let ready = $state(false);
 
@@ -60,6 +62,7 @@
     onkeydown={handleDialogKeydown}
     role="document"
     tabindex={-1}
+    style={width ? `--modal-width: ${width}` : undefined}
   >
     <div class="modal-header">
       <span class="modal-title">{title}</span>
@@ -86,7 +89,7 @@
     background: var(--vscode-editorWidget-background, var(--bg-secondary));
     border: 1px solid rgba(128, 128, 128, 0.3);
     border-radius: 8px;
-    width: 480px;
+    width: var(--modal-width, 480px);
     max-height: 80vh;
     display: flex;
     flex-direction: column;

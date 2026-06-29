@@ -115,6 +115,13 @@ class ModalStore {
   openPushTag(tagName: string, remote = 'origin') { this.pushTag = { show: true, tagName, remote }; }
   closePushTag() { this.pushTag = { show: false, tagName: '', remote: 'origin' }; }
 
+  // ── Interactive Rebase ──
+  // Rendered locally by CommitGraph (props live there, not here). This flag only
+  // tracks open/closed so anyOpen — and the graph's ↑/↓ nav guard — sees it.
+  interactiveRebase = $state({ show: false });
+  openInteractiveRebase() { this.interactiveRebase = { show: true }; }
+  closeInteractiveRebase() { this.interactiveRebase = { show: false }; }
+
   // Single source of truth for "which fields are modals". anyOpen derives from
   // this instead of a hand-maintained OR-chain that historically forgot newly
   // added modals (e.g. amend). Svelte compiles class $state fields to prototype
@@ -124,7 +131,7 @@ class ModalStore {
     'deleteBranch', 'deleteTag', 'createBranch', 'createTag', 'merge', 'checkoutRemote',
     'renameBranch', 'deleteRemoteBranch', 'removeWorktree', 'stashApply', 'stashRename',
     'stashSave', 'stashRestore', 'amend', 'setUpstream', 'fetch', 'pull', 'push',
-    'flowInit', 'flowStart', 'flowFinish', 'pushTag',
+    'flowInit', 'flowStart', 'flowFinish', 'pushTag', 'interactiveRebase',
   ] as const;
 
   get anyOpen(): boolean {
@@ -198,6 +205,7 @@ class ModalStore {
     this.closeFlowStart();
     this.closeFlowFinish();
     this.closePushTag();
+    this.closeInteractiveRebase();
   }
 }
 

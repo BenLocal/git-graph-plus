@@ -215,6 +215,7 @@ export const ko: Record<string, string> = {
   'rebase.noChanges': '변경 없음 — 모든 커밋이 pick 상태입니다',
   'rebase.inlineDesc.reword': '새 메시지',
   'rebase.inlineDesc.squash': '최종 커밋 메시지',
+  'rebase.keyboardHint': '키보드: ↑/↓ 선택 · Shift+↑/↓ 순서 변경 · p/r/e/s/f/d 액션 지정 · Ctrl/Cmd+Enter 시작',
   'rebase.dragToReorder': '드래그로 순서 변경',
   'rebase.clickToChangeAction': '클릭하여 action 변경',
   'rebase.moveUp': '위로 이동',

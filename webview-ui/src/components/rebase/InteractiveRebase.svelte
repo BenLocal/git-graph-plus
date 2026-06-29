@@ -30,6 +30,8 @@
   let initialOrder = $state<string[]>([]);
   let loading = $state(true);
   let dragIndex = $state<number | null>(null);
+  // Row targeted by keyboard shortcuts. Highlighted via the `selected` class.
+  let selectedIndex = $state(0);
   let showActionMenu = $state<number | null>(null);
   let dropdownPos = $state<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -189,10 +191,12 @@
       showActionMenu = null;
     }
     window.addEventListener('click', handleClickOutside);
+    window.addEventListener('keydown', handleKeydown);
 
     return () => {
       window.removeEventListener('message', handleMessage);
       window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('keydown', handleKeydown);
     };
   });
 
@@ -264,9 +268,64 @@
   function getActionInfo(action: TodoEntry['action']) {
     return ACTIONS.find(a => a.value === action) ?? ACTIONS[0];
   }
+
+  // Single-key shortcuts → rebase action for the selected row.
+  const ACTION_KEYS: Record<string, TodoEntry['action']> = {
+    p: 'pick', r: 'reword', e: 'edit', s: 'squash', f: 'fixup', d: 'drop',
+  };
+
+  function clampSelection() {
+    if (selectedIndex < 0) selectedIndex = 0;
+    if (selectedIndex > todos.length - 1) selectedIndex = todos.length - 1;
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (loading || todos.length === 0) return;
+
+    // Ctrl/Cmd+Enter starts the rebase, even while editing a message.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      if (hasChanges) { e.preventDefault(); execute(); }
+      return;
+    }
+
+    // Don't hijack typing inside the reword/squash message editors.
+    const target = e.target as HTMLElement | null;
+    if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+    clampSelection();
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        moveDown(selectedIndex);
+        selectedIndex = Math.min(selectedIndex + 1, todos.length - 1);
+      } else {
+        selectedIndex = Math.min(selectedIndex + 1, todos.length - 1);
+      }
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        moveUp(selectedIndex);
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+      } else {
+        selectedIndex = Math.max(selectedIndex - 1, 0);
+      }
+      return;
+    }
+
+    const action = ACTION_KEYS[e.key.toLowerCase()];
+    if (action) {
+      // squash/fixup can't apply to the first (oldest) row.
+      if (selectedIndex === 0 && (action === 'squash' || action === 'fixup')) return;
+      e.preventDefault();
+      setAction(selectedIndex, action);
+    }
+  }
 </script>
 
-<Modal title={t('rebase.title')} {onClose}>
+<Modal title={t('rebase.title')} {onClose} width="min(760px, 92vw)">
   {#if loading}
     <div class="rebase-loading"><span class="spinner"></span> {t('rebase.loading')}</div>
   {:else if todos.length === 0}
@@ -282,6 +341,9 @@
     <div class="rebase-header">
       <span class="rebase-count">{todos.length} commit{todos.length > 1 ? 's' : ''}</span>
       <span class="rebase-hint">{t('rebase.instructions')}</span>
+      <span class="rebase-kbd-hint" use:tooltip={t('rebase.keyboardHint')}>
+        <i class="codicon codicon-keyboard"></i>
+      </span>
     </div>
 
     {#if canAutosquash}
@@ -306,10 +368,13 @@
       {#each todos as todo, index (todo.hash)}
         {@const info = getActionInfo(todo.action)}
         {@const groupRole = squashGroups[index]}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
           class="todo-item"
           class:dropped={todo.action === 'drop'}
+          class:selected={selectedIndex === index}
           class:dragging={dragIndex === index}
+          onmousedown={() => { selectedIndex = index; }}
           class:squash-target={groupRole === 'squash-target'}
           class:squash-member={groupRole === 'squash-member'}
           draggable="true"
@@ -443,6 +508,18 @@
     color: var(--text-secondary);
   }
 
+  .rebase-kbd-hint {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-secondary);
+    cursor: help;
+  }
+
+  .rebase-kbd-hint .codicon {
+    font-size: 14px;
+  }
+
   .autosquash-row {
     display: flex;
     align-items: center;
@@ -530,7 +607,7 @@
   }
 
   .todo-list {
-    max-height: 350px;
+    max-height: min(56vh, 560px);
     overflow-y: auto;
     border: 1px solid var(--border-color);
     border-radius: 6px;
@@ -556,6 +633,11 @@
 
   .todo-item.dropped {
     opacity: 0.5;
+  }
+
+  .todo-item.selected {
+    background: var(--vscode-list-activeSelectionBackground, rgba(0, 127, 212, 0.18));
+    box-shadow: inset 2px 0 0 var(--vscode-focusBorder, #007fd4);
   }
 
   .todo-item.dragging {

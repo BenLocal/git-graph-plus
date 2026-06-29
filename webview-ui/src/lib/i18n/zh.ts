@@ -215,6 +215,7 @@ export const zh: Record<string, string> = {
   'rebase.noChanges': '无变更 — 所有提交均为 pick',
   'rebase.inlineDesc.reword': '新消息',
   'rebase.inlineDesc.squash': '最终提交消息',
+  'rebase.keyboardHint': '键盘：↑/↓ 选择 · Shift+↑/↓ 重新排序 · p/r/e/s/f/d 设置操作 · Ctrl/Cmd+Enter 开始',
   'rebase.dragToReorder': '拖动以重新排序',
   'rebase.clickToChangeAction': '点击以更改 action',
   'rebase.moveUp': '上移',

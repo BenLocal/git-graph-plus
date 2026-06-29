@@ -209,6 +209,12 @@
   });
   let clickTimer: ReturnType<typeof setTimeout> | null = null;
   let interactiveRebaseBase = $state<string | null>(null);
+  // Mirror the locally-rendered interactive rebase overlay into modalStore so
+  // anyOpen sees it — otherwise the graph's ↑/↓ nav keeps scrolling underneath.
+  $effect(() => {
+    if (interactiveRebaseBase) { modalStore.openInteractiveRebase(); }
+    else { modalStore.closeInteractiveRebase(); }
+  });
   let showResetModal = $state(false);
   let resetTarget = $state('');
   let resetMode = $state<'soft' | 'mixed' | 'hard'>('mixed');

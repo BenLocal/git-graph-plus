@@ -58,6 +58,15 @@ describe('modalStore.anyOpen', () => {
     expect(modalStore.anyOpen).toBe(true);
   });
 
+  it('returns true while an interactive rebase is open', () => {
+    // The interactive rebase overlay is rendered locally by CommitGraph, but it
+    // must still register as "open" so the graph's ↑/↓ navigation stands down.
+    modalStore.openInteractiveRebase();
+    expect(modalStore.anyOpen).toBe(true);
+    modalStore.closeInteractiveRebase();
+    expect(modalStore.anyOpen).toBe(false);
+  });
+
   it('returns true for each modal individually', () => {
     // Spot-check several different modals to confirm the getter actually
     // ORs across all the show flags it claims to.

@@ -215,6 +215,7 @@ export const en: Record<string, string> = {
   'rebase.noChanges': 'No changes — all commits are set to pick',
   'rebase.inlineDesc.reword': 'New message',
   'rebase.inlineDesc.squash': 'Final commit message',
+  'rebase.keyboardHint': 'Keyboard: ↑/↓ select · Shift+↑/↓ reorder · p/r/e/s/f/d set action · Ctrl/Cmd+Enter start',
   'rebase.dragToReorder': 'Drag to reorder',
   'rebase.clickToChangeAction': 'Click to change action',
   'rebase.moveUp': 'Move up',
