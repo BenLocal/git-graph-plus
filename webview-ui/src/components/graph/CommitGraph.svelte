@@ -271,6 +271,23 @@
   let worktreeBlockedPath = $state('');
   let worktreeBlockedAbsPath = $state('');
 
+  // Keep the right-clicked commit outlined while a follow-up modal opened from
+  // its context menu is showing, then drop the outline once every modal closes.
+  // Covers both modalStore-managed modals (rendered in App.svelte, so they can't
+  // clear contextMenuHash themselves) and the modals rendered locally below.
+  // interactiveRebaseBase is only mirrored into modalStore via an $effect (runs
+  // after the synchronous menu onClose), so it must be ORed in directly here.
+  const anyModalOpen = $derived(
+    modalStore.anyOpen
+    || showResetModal || showRebaseModal || showCherryPickModal || showRevertModal || !!autosquashTarget
+    || showCheckoutCommitModal || showFastForwardModal || showPullAfterCheckoutModal || showWorktreeBlockedModal
+    || !!squashChain || !!multiCherryPickTargets || !!interactiveRebaseBase
+    || !!rebaseTargetBranches || !!rebaseDirtyBranch,
+  );
+  $effect(() => {
+    if (!anyModalOpen) { contextMenuHash = null; }
+  });
+
   function doCheckout(ref: string, pullAfter = false, dirtyPayload: Record<string, boolean> = {}, skipBehindCheck = false) {
     // Check if branch is used by a worktree
     const wt = branchStore.worktrees.find(w => !w.isMain && w.branch === ref);
@@ -699,8 +716,14 @@
   // terminal flow, per the gitGraphPlus.interactiveRebase.mode setting.
   function openInteractiveRebase(base: string) {
     dispatchInteractiveRebase(base, uiStore.interactiveRebaseMode, {
+      // GUI mode keeps the multi-selection armed while the modal is open (the
+      // modal clears it on close, like squash/cherry-pick). Classic mode hands
+      // off to the terminal with no modal, so clear the selection now.
       openModal: (b) => { interactiveRebaseBase = b; },
-      runClassic: (b) => vscode.postMessage({ type: 'runClassicRebase', payload: { base: b } }),
+      runClassic: (b) => {
+        vscode.postMessage({ type: 'runClassicRebase', payload: { base: b } });
+        uiStore.exitMultiSelect();
+      },
     });
   }
 
@@ -716,7 +739,6 @@
       const hasUncommitted = commitStore.commits.some(c => c.hash === 'UNCOMMITTED');
       if (!hasUncommitted) {
         openInteractiveRebase(base);
-        uiStore.exitMultiSelect();
         contextMenuHash = null;
       } else {
         pendingRebaseBase = base;
@@ -739,7 +761,6 @@
         const resumeBase = pendingRebaseBase;
         pendingRebaseBase = null;
         openInteractiveRebase(resumeBase);
-        uiStore.exitMultiSelect();
         contextMenuHash = null;
       } else if (msg?.type === 'error') {
         // Checkout failed — drop the pending rebase so a later unrelated checkout
@@ -1712,7 +1733,7 @@
     x={contextMenu.x}
     y={contextMenu.y}
     items={contextMenu.items}
-    onClose={() => { contextMenu = null; if (!showRebaseModal && !showCherryPickModal && !showRevertModal && !showResetModal && !autosquashTarget) contextMenuHash = null; }}
+    onClose={() => { contextMenu = null; if (!anyModalOpen) contextMenuHash = null; }}
   />
 {/if}
 
@@ -1721,7 +1742,7 @@
     base={interactiveRebaseBase}
     branchName={branchStore.currentBranch?.name ?? 'HEAD'}
     baseSubject={commitStore.getCommit(interactiveRebaseBase)?.subject ?? ''}
-    onClose={() => { interactiveRebaseBase = null; }}
+    onClose={() => { interactiveRebaseBase = null; uiStore.exitMultiSelect(); contextMenuHash = null; }}
   />
 {/if}
 

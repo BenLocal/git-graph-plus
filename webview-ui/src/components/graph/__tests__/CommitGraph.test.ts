@@ -5,6 +5,7 @@ import CommitGraph from '../CommitGraph.svelte';
 import { commitStore } from '../../../lib/stores/commits.svelte';
 import { branchStore } from '../../../lib/stores/branches.svelte';
 import { uiStore } from '../../../lib/stores/ui.svelte';
+import { modalStore } from '../../../lib/stores/modals.svelte';
 import { i18n } from '../../../lib/i18n/index.svelte';
 import type { Commit, CommitGraphData } from '../../../lib/types';
 
@@ -48,6 +49,7 @@ beforeEach(() => {
   branchStore.branches = [];
   branchStore.worktrees = [];
   uiStore.selectedCommitHash = null;
+  modalStore.closeAll();
 });
 
 afterEach(() => cleanup());
@@ -288,6 +290,99 @@ describe('CommitGraph signature icon', () => {
     const item = Array.from(container.querySelectorAll<HTMLElement>('*'))
       .find(el => el.children.length === 0 && /^interactive rebase \d+ commits$/i.test((el.textContent ?? '').trim()));
     expect(item).toBeTruthy();
+
+    uiStore.exitMultiSelect();
+  });
+
+  it('keeps the right-clicked commit outlined while a context-menu modal is open, then clears it on close', async () => {
+    // Regression: opening a modal from the context menu (e.g. New Branch, which
+    // is managed by modalStore and rendered in App.svelte) used to clear the
+    // row outline immediately — reset kept it, these did not. The outline must
+    // persist while any follow-up modal is open and drop once it closes.
+    commitStore.setData(makeGraphData([
+      makeCommit('h1', 'first'),
+      makeCommit('h2', 'second', ['h1']),
+    ]));
+    const { container } = render(CommitGraph, {});
+    await tick();
+    const row = container.querySelectorAll<HTMLElement>('.commit-row')[0];
+    await fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+    await tick();
+    expect(container.querySelector('.commit-row.highlighted')).toBeTruthy();
+
+    const item = Array.from(container.querySelectorAll<HTMLElement>('.menu-item'))
+      .find(el => (el.textContent ?? '').trim() === 'New Branch');
+    expect(item).toBeTruthy();
+    await fireEvent.click(item!);
+    await tick();
+
+    expect(modalStore.createBranch.show).toBe(true);
+    expect(container.querySelector('.commit-row.highlighted')).toBeTruthy();
+
+    modalStore.closeCreateBranch();
+    await tick();
+    expect(container.querySelector('.commit-row.highlighted')).toBeFalsy();
+  });
+
+  it('keeps the right-clicked commit outlined when opening interactive rebase from the single-commit menu', async () => {
+    // Regression: interactiveRebaseBase is only mirrored into modalStore via an
+    // $effect, which runs after the synchronous menu onClose. The outline used
+    // to clear because anyModalOpen still read false at that point.
+    const c1 = makeCommit('h1', 'first');
+    const c2 = makeCommit('h2', 'second', ['h1']);
+    c2.refs = [{ type: 'head', name: 'main' }];
+    commitStore.setData(makeGraphData([c2, c1]));
+    branchStore.branches = [{ name: 'main', current: true, ahead: 0, behind: 0, hash: 'h2' }];
+    uiStore.interactiveRebaseMode = 'ui';
+
+    const { container } = render(CommitGraph, {});
+    await tick();
+    const row = container.querySelectorAll<HTMLElement>('.commit-row')[1]; // h1 row
+    await fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+    await tick();
+    expect(container.querySelector('.commit-row.highlighted')).toBeTruthy();
+
+    const item = Array.from(container.querySelectorAll<HTMLElement>('.menu-item'))
+      .find(el => /^interactively rebase .* to here$/i.test((el.textContent ?? '').trim()));
+    expect(item).toBeTruthy();
+    await fireEvent.click(item!);
+    await tick();
+
+    expect(container.querySelector('.commit-row.highlighted')).toBeTruthy();
+
+    uiStore.exitMultiSelect();
+  });
+
+  it('keeps the multi-selection armed after opening the interactive rebase modal (GUI mode)', async () => {
+    // Regression: clicking "Interactive Rebase selected commits" used to clear
+    // the selection the moment the modal opened. Like squash/cherry-pick, the
+    // selection must persist while the modal is open.
+    const base = makeCommit('m0', 'base');
+    const c1 = makeCommit('c1', 'commit 1', ['m0']);
+    const c2 = makeCommit('c2', 'commit 2', ['c1']);
+    c2.refs = [{ type: 'head', name: 'main' }];
+    commitStore.setData(makeGraphData([c2, c1, base]));
+    branchStore.branches = [
+      { name: 'main', current: true, ahead: 0, behind: 0, hash: 'c2' },
+    ];
+    uiStore.interactiveRebaseMode = 'ui';
+    uiStore.multiSelectArmed = true;
+    uiStore.selectedCommitHashes = ['c1', 'c2'];
+
+    const { container } = render(CommitGraph, {});
+    await tick();
+    const row = container.querySelectorAll<HTMLElement>('.commit-row')[0]; // c2 row
+    await fireEvent.contextMenu(row, { clientX: 10, clientY: 10 });
+    await tick();
+
+    const item = Array.from(container.querySelectorAll<HTMLElement>('*'))
+      .find(el => el.children.length === 0 && /^interactive rebase \d+ commits$/i.test((el.textContent ?? '').trim()));
+    expect(item).toBeTruthy();
+    await fireEvent.click(item!);
+    await tick();
+
+    expect(uiStore.multiSelectArmed).toBe(true);
+    expect(uiStore.selectedCommitHashes).toEqual(['c1', 'c2']);
 
     uiStore.exitMultiSelect();
   });
