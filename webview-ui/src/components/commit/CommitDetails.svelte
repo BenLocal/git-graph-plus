@@ -804,6 +804,8 @@
                     }}
                     ondblclick={() => {
                       // Open the change in the editor: staged → HEAD↔index, unstaged → index↔working.
+                      // Nested repos ('N') can't be diffed from the parent — skip them. New/added files
+                      // are handled backend-side (diffed against the empty tree when a ref lacks them).
                       if (node.status !== 'N') {
                         vscode.postMessage({ type: 'openDiff', payload: { file: node.path, staged } });
                       }

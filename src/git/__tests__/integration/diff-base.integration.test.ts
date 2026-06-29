@@ -31,4 +31,11 @@ describe('GitService integration — resolveDiffBaseRef', () => {
 
     expect(base).toBe(emptyTree);
   });
+
+  it('getEmptyTreeRef returns the repo hash algorithm empty tree object', async () => {
+    commit(repo.path, 'root', { 'a.txt': '1\n' });
+    const emptyTree = runGit(repo.path, ['mktree'], '').trim();
+
+    expect(await svc.getEmptyTreeRef()).toBe(emptyTree);
+  });
 });

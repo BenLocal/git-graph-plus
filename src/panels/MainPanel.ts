@@ -1660,6 +1660,32 @@ export class MainPanel {
     });
   }
 
+  /**
+   * Build a `git:` diff URI for `file` at `ref`, falling back to the empty tree
+   * when the file doesn't exist there. A file added or deleted across a diff is
+   * absent on one side; the built-in git content provider renders a missing
+   * file as empty content *only* for the empty-tree ref and throws
+   * `FileNotFound` (surfaced as "cannot open editor, file not found") for any
+   * other ref. `ref === ''` is the index.
+   */
+  private async toGitDiffUri(fullPath: string, file: string, ref: string): Promise<vscode.Uri> {
+    const usableRef = (await this.gitService.fileExistsAtRef(ref, file))
+      ? ref
+      : await this.gitService.getEmptyTreeRef();
+    return this.toGitUri(fullPath, usableRef);
+  }
+
+  /** The working-tree file URI, or an empty `git:` URI when the file is gone
+   *  from disk (e.g. an unstaged deletion) so the diff renders it as removed. */
+  private async workingTreeDiffUri(fullPath: string): Promise<vscode.Uri> {
+    try {
+      await access(fullPath);
+      return vscode.Uri.file(fullPath);
+    } catch {
+      return this.toGitUri(fullPath, await this.gitService.getEmptyTreeRef());
+    }
+  }
+
   private async openDiffInEditor(
     file: string,
     staged?: boolean,
@@ -1669,25 +1695,25 @@ export class MainPanel {
     // we feed it to vscode.diff / build URIs. resolveRepoRelativePath throws
     // on traversal (`../etc/passwd`) and absolute paths.
     const fullPath = this.resolveRepoRelativePath(file, 'openDiff');
-    const fileUri = vscode.Uri.file(fullPath);
 
     if (commitHash) {
       // Commit diff: parent vs commit. Resolve the parent to a full SHA — the
       // `<sha>~1` shorthand isn't understood by markdown-diff tooling (#51).
       const parentRef = await this.gitService.resolveDiffBaseRef(commitHash);
-      const leftUri = this.toGitUri(fullPath, parentRef);
-      const rightUri = this.toGitUri(fullPath, commitHash);
+      const leftUri = await this.toGitDiffUri(fullPath, file, parentRef);
+      const rightUri = await this.toGitDiffUri(fullPath, file, commitHash);
       const title = `${file} (${commitHash.substring(0, 7)})`;
       await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title);
     } else if (staged) {
-      // Staged diff: HEAD vs index
-      const headUri = this.toGitUri(fullPath, 'HEAD');
-      const indexUri = this.toGitUri(fullPath, '');
-      await vscode.commands.executeCommand('vscode.diff', headUri, indexUri, `${file} (Staged)`);
+      // Staged diff: HEAD vs index.
+      const leftUri = await this.toGitDiffUri(fullPath, file, 'HEAD');
+      const rightUri = await this.toGitDiffUri(fullPath, file, '');
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (Staged)`);
     } else {
-      // Unstaged diff: index vs working tree
-      const indexUri = this.toGitUri(fullPath, '');
-      await vscode.commands.executeCommand('vscode.diff', indexUri, fileUri, `${file} (Working Tree)`);
+      // Unstaged diff: index vs working tree.
+      const leftUri = await this.toGitDiffUri(fullPath, file, '');
+      const rightUri = await this.workingTreeDiffUri(fullPath);
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (Working Tree)`);
     }
   }
 
@@ -1698,12 +1724,12 @@ export class MainPanel {
     // ref1 = 'working' means compare ref2 against working tree
     if (ref1 === 'working' || ref2 === 'working') {
       const commitRef = ref1 === 'working' ? ref2 : ref1;
-      const commitUri = this.toGitUri(fullPath, commitRef);
-      const fileUri = vscode.Uri.file(fullPath);
-      await vscode.commands.executeCommand('vscode.diff', commitUri, fileUri, `${file} (${commitRef.substring(0, 7)} ↔ Working Tree)`);
+      const commitUri = await this.toGitDiffUri(fullPath, file, commitRef);
+      const workingUri = await this.workingTreeDiffUri(fullPath);
+      await vscode.commands.executeCommand('vscode.diff', commitUri, workingUri, `${file} (${commitRef.substring(0, 7)} ↔ Working Tree)`);
     } else {
-      const leftUri = this.toGitUri(fullPath, ref1);
-      const rightUri = this.toGitUri(fullPath, ref2);
+      const leftUri = await this.toGitDiffUri(fullPath, file, ref1);
+      const rightUri = await this.toGitDiffUri(fullPath, file, ref2);
       const label1 = ref1.length > 10 ? ref1.substring(0, 7) : ref1;
       const label2 = ref2.length > 10 ? ref2.substring(0, 7) : ref2;
       await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, `${file} (${label1} ↔ ${label2})`);

@@ -18,6 +18,8 @@ const H = vi.hoisted(() => {
     showCommitDiff: vi.fn(async () => []),
     showCommitFiles: vi.fn(async () => []),
     resolveDiffBaseRef: vi.fn(async () => 'parentsha'),
+    getEmptyTreeRef: vi.fn(async () => '4b825dc642cb6eb9a060e54bf8d69288fbee4904'),
+    fileExistsAtRef: vi.fn(async () => true),
     getConflictFiles: vi.fn(async () => []),
     getOperationState: vi.fn(async () => ({ type: null })),
     getRemoteUrl: vi.fn(async () => ''),
@@ -123,6 +125,8 @@ beforeEach(() => {
   H.git.getConflictFiles.mockResolvedValue([]);
   H.git.getRemoteUrl.mockResolvedValue('');
   H.git.showCommitDiff.mockResolvedValue([]);
+  H.git.fileExistsAtRef.mockResolvedValue(true);
+  H.git.getEmptyTreeRef.mockResolvedValue('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
   H.repos = [{ path: '/repo', name: 'repo', type: 'root' }];
   (MainPanel as unknown as { currentPanel: unknown }).currentPanel = undefined;
   MainPanel.createOrShow(extUri, '/repo');
@@ -180,6 +184,53 @@ describe('MainPanel message routing', () => {
     const leftRef = JSON.parse(leftUri.query).ref;
     expect(leftRef).toBe('1111111111111111111111111111111111111111');
     expect(leftRef).not.toContain('~1');
+  });
+
+  it('openDiff for a new staged file diffs the empty tree against the index (HEAD has no such file)', async () => {
+    const vscode = await import('vscode');
+    // HEAD lacks the new file, the index has it.
+    H.git.fileExistsAtRef.mockImplementation(async (ref: string) => ref !== 'HEAD');
+
+    await dispatch({ type: 'openDiff', payload: { file: 'added.txt', staged: true } });
+
+    const diffCall = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(c => c[0] === 'vscode.diff')!;
+    expect(diffCall).toBeDefined();
+    const leftRef = JSON.parse((diffCall[1] as { query: string }).query).ref;
+    const rightRef = JSON.parse((diffCall[2] as { query: string }).query).ref;
+    expect(leftRef).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904'); // empty tree
+    expect(rightRef).toBe(''); // index
+  });
+
+  it('openDiff for a new untracked file diffs the empty tree as the base (index has no such file)', async () => {
+    const vscode = await import('vscode');
+    // The file is absent from the index (untracked).
+    H.git.fileExistsAtRef.mockResolvedValue(false);
+
+    await dispatch({ type: 'openDiff', payload: { file: 'untracked.txt', staged: false } });
+
+    const diffCall = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(c => c[0] === 'vscode.diff')!;
+    expect(diffCall).toBeDefined();
+    const leftRef = JSON.parse((diffCall[1] as { query: string }).query).ref;
+    expect(leftRef).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904'); // empty tree base
+  });
+
+  it('openDiff for a file added in a commit diffs the empty tree against the commit (parent lacks it)', async () => {
+    const vscode = await import('vscode');
+    H.git.resolveDiffBaseRef.mockResolvedValue('1111111111111111111111111111111111111111');
+    // The file exists at the commit but not at its parent (it was added there).
+    H.git.fileExistsAtRef.mockImplementation(async (ref: string) => ref === '2222222');
+
+    await dispatch({ type: 'openDiff', payload: { file: 'rebase-demo.txt', commitHash: '2222222' } });
+
+    const diffCall = (vscode.commands.executeCommand as ReturnType<typeof vi.fn>).mock.calls
+      .find(c => c[0] === 'vscode.diff')!;
+    expect(diffCall).toBeDefined();
+    const leftRef = JSON.parse((diffCall[1] as { query: string }).query).ref;
+    const rightRef = JSON.parse((diffCall[2] as { query: string }).query).ref;
+    expect(leftRef).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904'); // empty tree (parent has no file)
+    expect(rightRef).toBe('2222222');
   });
 
   it('getBranches posts branchData with all the sidebar collections', async () => {

@@ -210,8 +210,38 @@ export class GitService {
       // `--quiet` exits non-zero with no output when the parent doesn't exist
       // (root commit) — fall through to the empty tree.
     }
+    return this.getEmptyTreeRef();
+  }
+
+  /**
+   * The empty tree object name for this repo's hash algorithm. Diffing against
+   * it renders a file as fully added — the only ref the built-in git content
+   * provider treats as "missing file ⇒ empty content" instead of throwing
+   * `FileNotFound`. Used as the base side when opening a new file's changes in
+   * the editor (a brand-new file has no HEAD/index version to diff against).
+   */
+  async getEmptyTreeRef(): Promise<string> {
     const format = (await this.exec(['rev-parse', '--show-object-format'], { silent: true })).trim();
     return GitService.EMPTY_TREE[format] ?? GitService.EMPTY_TREE.sha1;
+  }
+
+  /**
+   * Whether `file` exists at `ref` (`ref === ''` checks the index, `:<path>`).
+   * Used to pick a diff side's base: a file that's absent at a ref — added or
+   * deleted across the diff — must fall back to the empty tree, the only ref
+   * the built-in git content provider renders as empty content instead of
+   * throwing `FileNotFound` (which surfaces as "cannot open editor, file not
+   * found").
+   */
+  async fileExistsAtRef(ref: string, file: string): Promise<boolean> {
+    if (ref !== '') this.assertSafeRef(ref, 'fileExistsAtRef');
+    this.assertSafePath(file, 'fileExistsAtRef');
+    try {
+      await this.exec(['cat-file', '-e', `${ref}:${file}`], { silent: true });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**
