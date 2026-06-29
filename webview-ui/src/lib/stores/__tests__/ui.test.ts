@@ -139,6 +139,29 @@ describe('uiStore.modifierSelect', () => {
     uiStore.modifierSelect('c2', { range: false, orderedHashes: order });
     expect(uiStore.selectedCommitHashes).toEqual(['c4', 'c2']);
   });
+
+  it('Shift-click with no prior selection seeds the anchor from the fallback (current branch)', () => {
+    uiStore.modifierSelect('c2', { range: true, orderedHashes: order, fallbackAnchor: 'c4' });
+    expect(uiStore.multiSelectArmed).toBe(true);
+    expect(uiStore.anchorHash).toBe('c4');
+    expect(uiStore.selectedCommitHashes).toEqual(['c4', 'c3', 'c2']);
+    expect(uiStore.selectedCommitHash).toBeNull();
+  });
+
+  it('Shift-click with no prior selection and no fallback selects just that commit', () => {
+    uiStore.modifierSelect('c2', { range: true, orderedHashes: order });
+    expect(uiStore.selectedCommitHashes).toEqual(['c2']);
+  });
+
+  it('Shift-click ignores a fallback anchor outside the displayed order', () => {
+    uiStore.modifierSelect('c2', { range: true, orderedHashes: order, fallbackAnchor: 'zzz' });
+    expect(uiStore.selectedCommitHashes).toEqual(['c2']);
+  });
+
+  it('Ctrl-click with no prior selection ignores the fallback anchor', () => {
+    uiStore.modifierSelect('c2', { range: false, orderedHashes: order, fallbackAnchor: 'c4' });
+    expect(uiStore.selectedCommitHashes).toEqual(['c2']);
+  });
 });
 
 describe('uiStore.setError', () => {

@@ -102,10 +102,19 @@ class UiStore {
   // Modifier-click (Ctrl/Cmd toggle or Shift range) directly on a commit.
   // The first modifier-click promotes a plain single selection into armed
   // multi-select (seeding with the previously-selected commit), then defers to
-  // the same toggle/range handlers used in armed mode.
-  modifierSelect(hash: string, opts: { range: boolean; orderedHashes: string[] }) {
+  // the same toggle/range handlers used in armed mode. For a Shift-range with
+  // nothing selected yet, `fallbackAnchor` (the current branch HEAD) seeds the
+  // anchor so the range runs HEAD → clicked instead of selecting one commit.
+  modifierSelect(
+    hash: string,
+    opts: { range: boolean; orderedHashes: string[]; fallbackAnchor?: string | null },
+  ) {
     if (!this.multiSelectArmed) {
-      const seed = this.selectedCommitHash;
+      const fallback =
+        opts.range && opts.fallbackAnchor && opts.orderedHashes.includes(opts.fallbackAnchor)
+          ? opts.fallbackAnchor
+          : null;
+      const seed = this.selectedCommitHash ?? fallback;
       this.multiSelectArmed = true;
       this.selectedCommitHashes = seed ? [seed] : [];
       this.anchorHash = seed;

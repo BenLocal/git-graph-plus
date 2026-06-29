@@ -611,7 +611,7 @@
     // Not armed: Ctrl/Cmd or Shift click promotes to multi-select directly.
     if (e && (e.ctrlKey || e.metaKey || e.shiftKey)) {
       if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
-      uiStore.modifierSelect(commit.hash, { range: e.shiftKey, orderedHashes: displayCommits.map(c => c.hash) });
+      uiStore.modifierSelect(commit.hash, { range: e.shiftKey, orderedHashes: displayCommits.map(c => c.hash), fallbackAnchor: commitStore.headHash });
       return;
     }
     // Plain click single-selects (debounced).
