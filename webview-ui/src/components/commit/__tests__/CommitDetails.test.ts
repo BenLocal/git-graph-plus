@@ -4,6 +4,7 @@ import CommitDetails from '../CommitDetails.svelte';
 import { i18n } from '../../../lib/i18n/index.svelte';
 import { commitStore } from '../../../lib/stores/commits.svelte';
 import { uiStore } from '../../../lib/stores/ui.svelte';
+import { modalStore } from '../../../lib/stores/modals.svelte';
 import type { Commit, DiffData } from '../../../lib/types';
 
 function commit(over: Partial<Commit> = {}): Commit {
@@ -230,6 +231,15 @@ describe('CommitDetails — tabs', () => {
     const changesTab = Array.from(tabs).find(t => /change/i.test(t.textContent ?? ''))!;
     await fireEvent.click(changesTab);
     expect(changesTab.classList.contains('active')).toBe(true);
+  });
+
+  it('clicking back to the Commit tab re-activates it', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    const tabs = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'));
+    await fireEvent.click(tabs().find(t => /change/i.test(t.textContent ?? ''))!);
+    const commitTab = tabs().find(t => /commit/i.test(t.textContent ?? ''))!;
+    await fireEvent.click(commitTab);
+    expect(commitTab.classList.contains('active')).toBe(true);
   });
 
   it('UNCOMMITTED shows Staged/Unstaged tabs', async () => {
@@ -574,6 +584,21 @@ describe('CommitDetails — uncommitted (staged/unstaged)', () => {
     await waitFor(() => {
       const text = Array.from(container.querySelectorAll('.file-name')).map(el => el.textContent);
       expect(text).toContain('b.ts');
+    });
+  });
+
+  it('switching back to the Staged tab re-activates it and shows the staged list', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
+    deliverUncommitted([{ path: 'a.ts', status: 'M' }], [{ path: 'b.ts', status: 'A' }]);
+    await waitFor(() => container.querySelectorAll('.file-item').length > 0);
+    const tabs = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'));
+    await fireEvent.click(tabs().find(t => /unstaged/i.test(t.textContent ?? ''))!);
+    const stagedTab = tabs().find(t => /^staged/i.test(t.textContent?.trim() ?? ''))!;
+    await fireEvent.click(stagedTab);
+    expect(stagedTab.classList.contains('active')).toBe(true);
+    await waitFor(() => {
+      const text = Array.from(container.querySelectorAll('.file-name')).map(el => el.textContent);
+      expect(text).toContain('a.ts');
     });
   });
 
@@ -1015,6 +1040,196 @@ describe('CommitDetails — file context menu actions', () => {
     expect(req).toBeDefined();
     expect((req!.data as { payload: { file: string; force?: boolean } }).payload.force).toBeFalsy();
   });
+
+  it('LFS "Force Unlock" posts lfsUnlock with force:true', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'a.bin', status: 'M' }]);
+    deliverLfs([{ oid: 'o', path: 'a.bin' }], [{ path: 'a.bin', owner: 'alice', id: 'L1' }]);
+    await openMenu(container);
+    const forceItem = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /force/i.test(b.textContent ?? ''))!;
+    globalThis.__postedMessages = [];
+    await fireEvent.click(forceItem);
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'lfsUnlock');
+    expect((req!.data as { payload: { force?: boolean } }).payload.force).toBe(true);
+  });
+
+  it('"Reveal in File Explorer" posts revealInExplorer with the file path', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
+    await openMenu(container);
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /reveal/i.test(b.textContent ?? ''))!;
+    globalThis.__postedMessages = [];
+    await fireEvent.click(item);
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'revealInExplorer');
+    expect((req!.data as { payload: { file: string } }).payload.file).toBe('src/a.ts');
+  });
+
+  it('"Copy Path" posts copyFilePath with the file path', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
+    await openMenu(container);
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /^copy path$/i.test(b.textContent?.trim() ?? ''))!;
+    globalThis.__postedMessages = [];
+    await fireEvent.click(item);
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'copyFilePath');
+    expect((req!.data as { payload: { file: string } }).payload.file).toBe('src/a.ts');
+  });
+
+  it('"Copy Relative Path" posts copyToClipboard with the file path', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
+    await openMenu(container);
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /relative path/i.test(b.textContent ?? ''))!;
+    globalThis.__postedMessages = [];
+    await fireEvent.click(item);
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'copyToClipboard');
+    expect((req!.data as { payload: { text: string } }).payload.text).toBe('src/a.ts');
+  });
+
+  it('"Create Patch" posts saveCommitPatch for the file', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
+    await openMenu(container);
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /^create patch$/i.test(b.textContent?.trim() ?? ''))!;
+    globalThis.__postedMessages = [];
+    await fireEvent.click(item);
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'saveCommitPatch');
+    expect((req!.data as { payload: { hash: string; paths: string[] } }).payload).toMatchObject({
+      hash: 'h1',
+      paths: ['src/a.ts'],
+    });
+  });
+
+  it('"Reverse File" posts reverseCommitChanges for the file', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
+    await openMenu(container);
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /reverse file/i.test(b.textContent ?? ''))!;
+    globalThis.__postedMessages = [];
+    await fireEvent.click(item);
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'reverseCommitChanges');
+    expect((req!.data as { payload: { commit: string; file: string } }).payload).toMatchObject({
+      commit: 'h1',
+      file: 'src/a.ts',
+    });
+  });
+
+  it('folder "Create Patch from folder" posts saveCommitPatch for the folder', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'h1' }) });
+    deliverCommitDiff('h1', [{ path: 'src/a.ts', status: 'M' }]);
+    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
+      .find(t => /change/i.test(t.textContent ?? ''))!;
+    await fireEvent.click(changesTab);
+    await waitFor(() => container.querySelector('.dir-item'));
+    await fireEvent.contextMenu(container.querySelector('.dir-item')!, { clientX: 10, clientY: 10 });
+    await waitFor(() => container.querySelector('.context-menu'));
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /create patch from folder/i.test(b.textContent ?? ''))!;
+    globalThis.__postedMessages = [];
+    await fireEvent.click(item);
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'saveCommitPatch');
+    expect((req!.data as { payload: { hash: string; paths: string[] } }).payload).toMatchObject({
+      hash: 'h1',
+      paths: ['src'],
+    });
+  });
+
+  // ── Stash commit menus ── stash refs offer "restore" instead of reverse.
+  const stashCommit = () => commit({ hash: 's1', refs: [{ type: 'stash', name: 'stash@{0}' }] });
+
+  it('stash file "Restore file from stash" opens the stash-restore modal', async () => {
+    const spy = vi.spyOn(modalStore, 'openStashRestore');
+    const { container } = render(CommitDetails, { commit: stashCommit() });
+    deliverCommitDiff('s1', [{ path: 'src/a.ts', status: 'M' }]);
+    await openMenu(container);
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /restore file from stash/i.test(b.textContent ?? ''))!;
+    await fireEvent.click(item);
+    expect(spy).toHaveBeenCalledWith(0, expect.any(String), ['src/a.ts']);
+    spy.mockRestore();
+  });
+
+  it('stash folder "Restore folder from stash" opens the stash-restore modal', async () => {
+    const spy = vi.spyOn(modalStore, 'openStashRestore');
+    const { container } = render(CommitDetails, { commit: stashCommit() });
+    deliverCommitDiff('s1', [{ path: 'src/a.ts', status: 'M' }]);
+    const changesTab = Array.from(container.querySelectorAll<HTMLButtonElement>('.top-tab'))
+      .find(t => /change/i.test(t.textContent ?? ''))!;
+    await fireEvent.click(changesTab);
+    await waitFor(() => container.querySelector('.dir-item'));
+    await fireEvent.contextMenu(container.querySelector('.dir-item')!, { clientX: 10, clientY: 10 });
+    await waitFor(() => container.querySelector('.context-menu'));
+    const item = Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => /restore folder from stash/i.test(b.textContent ?? ''))!;
+    await fireEvent.click(item);
+    expect(spy).toHaveBeenCalledWith(0, expect.any(String), ['src']);
+    spy.mockRestore();
+  });
+});
+
+describe('CommitDetails — uncommitted file context menu actions', () => {
+  async function openUncommittedMenu(container: HTMLElement) {
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'uncommittedDiffData', payload: { staged: [{ path: 'src/a.ts', status: 'M' }], unstaged: [] } },
+    }));
+    await waitFor(() => container.querySelector('.file-item'));
+    await fireEvent.contextMenu(container.querySelector('.file-item')!, { clientX: 10, clientY: 10 });
+    await waitFor(() => container.querySelector('.context-menu'));
+  }
+
+  function findItem(re: RegExp) {
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('button, [role="menuitem"]'))
+      .find(b => re.test((b.textContent ?? '').trim()))!;
+  }
+
+  it('"Open file" posts openFile', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
+    await openUncommittedMenu(container);
+    globalThis.__postedMessages = [];
+    await fireEvent.click(findItem(/^open file$/i));
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'openFile');
+    expect((req!.data as { payload: { file: string } }).payload.file).toBe('src/a.ts');
+  });
+
+  it('"Open changes" posts openDiff with staged flag', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
+    await openUncommittedMenu(container);
+    globalThis.__postedMessages = [];
+    await fireEvent.click(findItem(/open changes/i));
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'openDiff');
+    expect((req!.data as { payload: { file: string; staged: boolean } }).payload).toMatchObject({
+      file: 'src/a.ts',
+      staged: true,
+    });
+  });
+
+  it('"Reveal in File Explorer" posts revealInExplorer', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
+    await openUncommittedMenu(container);
+    globalThis.__postedMessages = [];
+    await fireEvent.click(findItem(/reveal/i));
+    expect(globalThis.__postedMessages.some((m) => (m.data as { type?: string }).type === 'revealInExplorer')).toBe(true);
+  });
+
+  it('"Copy Path" posts copyFilePath and "Copy Relative Path" posts copyToClipboard', async () => {
+    const { container } = render(CommitDetails, { commit: commit({ hash: 'UNCOMMITTED' }) });
+    await openUncommittedMenu(container);
+    globalThis.__postedMessages = [];
+    await fireEvent.click(findItem(/^copy path$/i));
+    expect(globalThis.__postedMessages.some((m) => (m.data as { type?: string }).type === 'copyFilePath')).toBe(true);
+
+    await openUncommittedMenu(container);
+    globalThis.__postedMessages = [];
+    await fireEvent.click(findItem(/relative path/i));
+    const req = globalThis.__postedMessages.find((m) => (m.data as { type?: string }).type === 'copyToClipboard');
+    expect((req!.data as { payload: { text: string } }).payload.text).toBe('src/a.ts');
+  });
 });
 
 describe('CommitDetails — side-by-side scroll sync', () => {
@@ -1128,6 +1343,15 @@ describe('CommitDetails — markdown toggle', () => {
     await fireEvent.click(getByText('Plain Text'));
     expect(container.querySelector('.message-section strong')).toBeNull();
     expect(container.querySelector('.message-section')?.textContent).toContain('**bold**');
+  });
+
+  it('switches back to markdown when the Markdown toggle is clicked', async () => {
+    const { container, getByText } = render(CommitDetails, {
+      commit: commit({ subject: '**bold** subject', body: '- one\n- two', parents: [] }),
+    });
+    await fireEvent.click(getByText('Plain Text'));
+    await fireEvent.click(getByText('Markdown'));
+    expect(container.querySelector('.message-section strong')?.textContent).toBe('bold');
   });
 
   it('hides the toggle and shows plain text when the message has no markdown', () => {
