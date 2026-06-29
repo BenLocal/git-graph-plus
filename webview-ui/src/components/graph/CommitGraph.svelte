@@ -1111,9 +1111,15 @@
         autosquashTarget = { hash: commit.hash, subject: commit.subject, mode };
         vscode.postMessage({ type: 'openScmView', payload: { returnFocus: true } });
       };
-      modifyOps.push({ label: t('graph.commitFixup'),  action: () => openAutosquash('fixup') });
-      modifyOps.push({ label: t('graph.commitSquash'), action: () => openAutosquash('squash') });
-      groups.push(modifyOps);
+      // fixup!/squash! markers are committed on top of HEAD and only fold into
+      // their target via `rebase --autosquash`, which can only reach commits in
+      // the current branch's history. A marker against a commit on an unrelated
+      // branch could never be autosquashed, so only offer it for ancestors of HEAD.
+      if (isOnCurrentBranch) {
+        modifyOps.push({ label: t('graph.commitFixup'),  action: () => openAutosquash('fixup') });
+        modifyOps.push({ label: t('graph.commitSquash'), action: () => openAutosquash('squash') });
+      }
+      if (modifyOps.length > 0) groups.push(modifyOps);
 
       // ── Commit operations ──
       groups.push([
