@@ -103,6 +103,11 @@
   // ("(HEAD detached at …)", "(no branch, rebasing main)", "(no branch, bisect …)").
   // None of these are checkout-able start points, so fall back to the SHA.
   const isDetached = $derived(!!currentBranchName?.startsWith('('));
+  // While detached/rebasing/bisecting there's no branch name to show, so the
+  // badge falls back to the short HEAD SHA (matching git's "detached at <sha>").
+  const detachedSha = $derived(
+    branchStore.currentBranch?.hash?.slice(0, 7) || t('toolbar.detachedHead'),
+  );
   const createStartPoint = $derived(
     isDetached || !currentBranchName ? (branchStore.currentBranch?.hash ?? 'HEAD') : currentBranchName,
   );
@@ -191,10 +196,10 @@
       {/if}
     </div>
     {#if branchStore.currentBranch}
-      <span class="current-branch" use:tooltip={branchStore.currentBranch.name}>
-        <i class="codicon codicon-git-branch branch-icon"></i>
+      <span class="current-branch" use:tooltip={isDetached ? (branchStore.currentBranch.hash || branchStore.currentBranch.name) : branchStore.currentBranch.name}>
+        <i class="codicon {isDetached ? 'codicon-git-commit' : 'codicon-git-branch'} branch-icon"></i>
         <span class="branch-name">
-          {branchStore.currentBranch.name.startsWith('(HEAD detached') ? t('toolbar.detachedHead') : branchStore.currentBranch.name}
+          {isDetached ? detachedSha : branchStore.currentBranch.name}
         </span>
       </span>
     {/if}

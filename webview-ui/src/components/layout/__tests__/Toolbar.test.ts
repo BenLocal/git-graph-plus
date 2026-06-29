@@ -206,12 +206,25 @@ describe('Toolbar — branch badges', () => {
     expect(container.querySelector('.unpublished-icon')).not.toBeNull();
   });
 
-  it('shows detached label when current "branch" is detached HEAD', () => {
+  it('shows only the short SHA with a commit icon when HEAD is detached', () => {
     branchStore.branches = [
-      { name: '(HEAD detached at abc)', current: true, ahead: 0, behind: 0, hash: 'h' },
+      { name: '(HEAD detached at abc1234)', current: true, ahead: 0, behind: 0, hash: 'abc1234def567' },
     ];
     const { container } = render(Toolbar);
-    expect(container.querySelector('.branch-name')?.textContent?.toLowerCase()).toContain('detach');
+    const text = container.querySelector('.branch-name')?.textContent?.trim() ?? '';
+    expect(text).toBe('abc1234');
+    expect(container.querySelector('.branch-icon')?.classList).toContain('codicon-git-commit');
+  });
+
+  it('shows only the short SHA for non-branch HEAD states (rebasing, bisect)', () => {
+    for (const name of ['(no branch, rebasing main)', '(no branch, bisect started on main)']) {
+      branchStore.branches = [{ name, current: true, ahead: 0, behind: 0, hash: 'abc1234def567' }];
+      const { container, unmount } = render(Toolbar);
+      const text = container.querySelector('.branch-name')?.textContent?.trim() ?? '';
+      expect(text).toBe('abc1234');
+      expect(text).not.toContain('no branch');
+      unmount();
+    }
   });
 });
 

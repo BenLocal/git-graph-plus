@@ -766,7 +766,13 @@
   function onCommitContextMenu(e: MouseEvent, commit: Commit) {
     e.preventDefault();
     contextMenuHash = commit.hash;
-    const currentBranch = branchStore.currentBranch?.name ?? 'HEAD';
+    // git reports non-branch HEAD states as parenthesized pseudo-labels
+    // ("(no branch, rebasing main)", "(HEAD detached at …)"); none are real
+    // branch names, so menu labels fall back to the short HEAD SHA.
+    const head = branchStore.currentBranch;
+    const currentBranch = head?.name?.startsWith('(')
+      ? (head.hash?.slice(0, 7) || 'HEAD')
+      : (head?.name ?? 'HEAD');
 
     // ── Dedicated multi-select menu ──
     // When 2+ commits are selected and the right-clicked commit is part of the
