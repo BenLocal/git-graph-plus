@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { normalizeInteractiveRebaseMode, type InteractiveRebaseMode } from '../git/classic-rebase';
 
 /**
  * Reads the `gitGraphPlus.timeout` setting (in seconds) and returns the
@@ -34,4 +35,15 @@ export function readInitialCommitCount(): number {
  */
 export function readLoadMoreCommitCount(): number {
   return readPositiveIntSetting('loadMoreCommitCount', DEFAULT_LOAD_MORE_COMMIT_COUNT);
+}
+
+/**
+ * Reads `gitGraphPlus.interactiveRebase.mode` — whether interactive rebase
+ * opens the GUI editor (`ui`, default) or runs classic `git rebase -i` in the
+ * integrated terminal (`classic`).
+ */
+export function readInteractiveRebaseMode(): InteractiveRebaseMode {
+  return normalizeInteractiveRebaseMode(
+    vscode.workspace.getConfiguration('gitGraphPlus').get<string>('interactiveRebase.mode', 'ui'),
+  );
 }

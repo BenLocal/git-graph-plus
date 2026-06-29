@@ -33,6 +33,7 @@
   import { resolveDrop, dragRebaseMessage, dragMergeMessage } from '../../lib/utils/dragDrop';
   import { computeNavigationTarget, computeScrollTop, computeJumpTarget, isRowOffscreen, type ScrollAlign } from '../../lib/graph-navigation';
   import LinkifiedText from '../common/LinkifiedText.svelte';
+  import { dispatchInteractiveRebase } from '../../lib/interactive-rebase';
 
 
   /**
@@ -694,6 +695,15 @@
     }
   }
 
+  // Route an interactive-rebase request to the GUI modal or the classic
+  // terminal flow, per the gitGraphPlus.interactiveRebase.mode setting.
+  function openInteractiveRebase(base: string) {
+    dispatchInteractiveRebase(base, uiStore.interactiveRebaseMode, {
+      openModal: (b) => { interactiveRebaseBase = b; },
+      runClassic: (b) => vscode.postMessage({ type: 'runClassicRebase', payload: { base: b } }),
+    });
+  }
+
   // Entry for "Interactive Rebase selected commits". `chain` is oldest→newest
   // (getSquashChain); base = parent of the oldest selected commit.
   function startSelectionRebase(chain: Commit[], candidates: string[]) {
@@ -705,7 +715,7 @@
       // stash before a no-op switch).
       const hasUncommitted = commitStore.commits.some(c => c.hash === 'UNCOMMITTED');
       if (!hasUncommitted) {
-        interactiveRebaseBase = base;
+        openInteractiveRebase(base);
         uiStore.exitMultiSelect();
         contextMenuHash = null;
       } else {
@@ -726,8 +736,9 @@
       const msg = event.data;
       if (!pendingRebaseBase) { return; }
       if (msg?.type === 'operationComplete' && msg.payload?.operation === 'checkout') {
-        interactiveRebaseBase = pendingRebaseBase;
+        const resumeBase = pendingRebaseBase;
         pendingRebaseBase = null;
+        openInteractiveRebase(resumeBase);
         uiStore.exitMultiSelect();
         contextMenuHash = null;
       } else if (msg?.type === 'error') {
@@ -1047,7 +1058,7 @@
       if (!isOnCurrentBranch) {
         branchOps.push({ label: t('graph.rebaseTo', { branch: currentBranch }), action: () => { rebaseTarget = commit.hash; showRebaseModal = true; } });
       }
-      branchOps.push({ label: t('graph.interactiveRebaseTo', { branch: currentBranch }), action: () => { interactiveRebaseBase = commit.hash; } });
+      branchOps.push({ label: t('graph.interactiveRebaseTo', { branch: currentBranch }), action: () => { openInteractiveRebase(commit.hash); } });
       groups.push(branchOps);
 
       // ── Reset ──

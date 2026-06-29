@@ -409,6 +409,16 @@
           "minimum": 1,
           "markdownDescription": "Number of additional commits fetched each time the **Load more commits** button is clicked."
         },
+        "gitGraphPlus.interactiveRebase.mode": {
+          "type": "string",
+          "enum": ["ui", "classic"],
+          "enumDescriptions": [
+            "Open the built-in graphical interactive-rebase editor",
+            "Run git rebase -i in the integrated terminal using your configured Git editor"
+          ],
+          "default": "ui",
+          "markdownDescription": "How **Interactive Rebase** opens: the built-in GUI editor (`ui`), or the classic `git rebase -i` flow in the integrated terminal (`classic`), which uses your configured Git editor (e.g. vim, nano, `code --wait`)."
+        },
         "gitGraphPlus.graphSortOrder": {
           "type": "string",
           "enum": [

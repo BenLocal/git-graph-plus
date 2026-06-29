@@ -178,3 +178,5 @@ export interface FlowBranches {
 }
 
 export type FlowType = 'feature' | 'release' | 'hotfix';
+
+export type InteractiveRebaseMode = 'ui' | 'classic';

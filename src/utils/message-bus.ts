@@ -49,6 +49,7 @@ export type WebviewMessage =
   | { type: 'continueRebase' }
   | { type: 'skipRebase' }
   | { type: 'interactiveRebase'; payload: { base: string; todos: Array<{ action: string; hash: string; subject: string; message?: string }>; squashCount?: number } }
+  | { type: 'runClassicRebase'; payload: { base: string } }
   | { type: 'getRebaseCommits'; payload: { base: string } }
   | { type: 'reset'; payload: { ref: string; mode: 'soft' | 'mixed' | 'hard' } }
   | { type: 'push'; payload: { remote?: string; branch?: string; force?: 'with-lease' | 'force'; setUpstream?: boolean } }
@@ -151,6 +152,7 @@ export type ExtensionMessage =
   | { type: 'lfsData'; payload: { files: Array<{ oid: string; path: string }>; locks: Array<{ path: string; owner: string; id: string }> } }
   | { type: 'tagDetailsData'; payload: { name: string; hash: string; message?: string; isAnnotated: boolean } }
   | { type: 'setLocale'; payload: { locale: string; homeDir?: string } }
+  | { type: 'setInteractiveRebaseMode'; payload: { mode: 'ui' | 'classic' } }
   | { type: 'setDefaults'; payload: ModalDefaults }
   | { type: 'setLoadMoreCount'; payload: { count: number } }
   | { type: 'setBadgeBarThickness'; payload: { width: number } }

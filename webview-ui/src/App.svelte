@@ -113,6 +113,9 @@ import AmendModal from './components/modals/AmendModal.svelte';
         case 'setLoadMoreCount':
           uiStore.loadMoreCount = msg.payload.count;
           break;
+        case 'setInteractiveRebaseMode':
+          uiStore.interactiveRebaseMode = msg.payload.mode;
+          break;
         case 'setGraphColors':
           graphColorsStore.set(msg.payload.colors);
           break;

@@ -5,7 +5,8 @@ import { GitService, GitError } from '../git/git-service';
 import { formatGitError, isAuthFailure, transportFromRemoteUrl } from '../git/git-error-formatter';
 import { splitUpstreamRef } from '../git/git-parser';
 import { samePath } from '../utils/path';
-import { readTimeoutMs, readInitialCommitCount, readLoadMoreCommitCount } from '../utils/config';
+import { readTimeoutMs, readInitialCommitCount, readLoadMoreCommitCount, readInteractiveRebaseMode } from '../utils/config';
+import { buildClassicRebaseCommand } from '../git/classic-rebase';
 import { buildFullGraph } from '../git/git-graph-builder';
 import { compileBranchColorRules, makeBranchColorResolver } from '../git/branch-color-resolver';
 import { resolveGraphColors } from '../git/graph-colors';
@@ -213,6 +214,9 @@ export class MainPanel {
           const locale = localeSetting === 'auto' ? (vscode.env.language || 'en') : localeSetting;
           this.post({ type: 'setLocale', payload: { locale } });
         }
+        if (e.affectsConfiguration('gitGraphPlus.interactiveRebase.mode')) {
+          this.post({ type: 'setInteractiveRebaseMode', payload: { mode: readInteractiveRebaseMode() } });
+        }
         if (e.affectsConfiguration('gitGraphPlus.defaults')) {
           this.post({ type: 'setDefaults', payload: this.readModalDefaults() });
         }
@@ -251,6 +255,7 @@ export class MainPanel {
     this.post({ type: 'setBadgeBarThickness', payload: { width: this.readBadgeBarWidth() } });
     this.post({ type: 'setGraphColors', payload: { colors: this.readGraphColors() } });
     this.post({ type: 'setLoadMoreCount', payload: { count: readLoadMoreCommitCount() } });
+    this.post({ type: 'setInteractiveRebaseMode', payload: { mode: readInteractiveRebaseMode() } });
     void this.postCommitLinkRules();
 
     this.panel.webview.onDidReceiveMessage(
@@ -956,6 +961,17 @@ export class MainPanel {
             vscode.window.showInformationMessage(vscode.l10n.t('interactiveRebaseComplete'));
           }
           await this.refreshAll();
+          break;
+        }
+        case 'runClassicRebase': {
+          const command = buildClassicRebaseCommand(message.payload.base);
+          if (!command) { break; }
+          const name = 'Git Graph+ Rebase';
+          const terminal =
+            vscode.window.terminals.find(t => t.name === name && t.exitStatus === undefined)
+            ?? vscode.window.createTerminal({ name, cwd: this.repoPath });
+          terminal.show();
+          terminal.sendText(command, true);
           break;
         }
         case 'getRebaseCommits': {
