@@ -64,10 +64,11 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | Feature                  | Description                                                                                           |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- |
 | **Branch Operations**    | Create, rename, delete, and checkout branches                                                         |
+| **Branch Toolbar**       | Fork-style split button: create a branch (or worktree) seeded from the current branch, with **Lean Sync** (rebase the current branch onto the default branch), **Lean Finish** (merge it into the default branch), and a nested Git Flow menu |
 | **Amend**                | Amend the last commit directly from the graph with a single click                                    |
 | **Merge**                | Default, `--no-ff`, `--ff-only`, and squash merge strategies                                          |
 | **Rebase**               | Standard rebase and interactive rebase with drag-to-reorder UI                                        |
-| **Interactive Rebase**   | Visual UI with action dropdown (pick, reword, edit, squash, fixup, drop), drop warnings, and an autosquash toggle that folds `fixup!`/`squash!` commits into their targets - start it from a branch or a multi-commit selection |
+| **Interactive Rebase**   | Keyboard-driven visual UI with action dropdown (pick, reword, edit, squash, fixup, drop), drop warnings, and an autosquash toggle that folds `fixup!`/`squash!` commits into their targets - start it from a branch or a multi-commit selection. An optional classic mode runs `git rebase -i` in an integrated terminal (`gitGraphPlus.interactiveRebase.mode`) |
 | **Drag to Rebase/Merge** | Drag one branch onto another in the graph to rebase it onto, or merge it into, the target             |
 | **Squash Commits**       | Select multiple consecutive commits in the graph and squash them into one                             |
 | **Fixup / Squash Commit** | Commit staged changes as a `fixup!` or `squash!` of any commit straight from its context menu, ready for autosquash |
@@ -114,6 +115,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | **Image Diff**          | Side-by-side visual preview with swipe comparison for image changes                      |
 | **Patch Export**        | Save any commit as a `.patch` file                                                       |
 | **Open in Editor**      | Right-click any file in the diff viewer to open it or view its changes in VS Code        |
+| **File Path Actions**   | Right-click a file to reveal it in the OS file explorer, copy its absolute path, or copy its repo-relative path |
 | **Reverse Changes**     | Undo a whole file, a single hunk, or gutter-selected lines of a commit against your working tree — and copy selected lines — right from the diff |
 
 ### Stash & Worktree
@@ -187,6 +189,7 @@ A modern, full-featured Git GUI for VS Code. Visualize your commit history, mana
 | `gitGraphPlus.loadMoreCommitCount`     | `50`          | Extra commits fetched per **Load more commits** click    |
 | `gitGraphPlus.locale`                  | `auto`        | UI language (`auto`, `en`, `ko`, `zh-cn`)                |
 | `gitGraphPlus.graphSortOrder`          | `topological` | Commit sort order (`topological`, `date`, `author-date`) |
+| `gitGraphPlus.interactiveRebase.mode`  | `ui`          | Interactive rebase mode (`ui` visual editor, `classic` `git rebase -i` in a terminal) |
 | `gitGraphPlus.showSignatureStatus`     | `true`        | Show GPG/SSH signature status in the graph               |
 | `gitGraphPlus.commitMessageLinks`      | `[]`          | Custom `{ pattern, url }` regex rules that turn commit-message text into clickable links |
 | `gitGraphPlus.autoDetectRepoLinks`     | `true`        | Auto-link `#123` issues (github.com/gitlab.com) and `!123` GitLab MRs from the `origin` remote |

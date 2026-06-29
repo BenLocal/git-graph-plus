@@ -64,10 +64,11 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | 기능                     | 설명                                                                                    |
 | ------------------------ | --------------------------------------------------------------------------------------- |
 | **브랜치 작업**          | 브랜치 생성, 이름 변경, 삭제, checkout                                                  |
+| **브랜치 툴바**          | Fork 스타일 split 버튼: 현재 브랜치를 기준으로 브랜치(또는 worktree) 생성, **Lean Sync** (현재 브랜치를 default 브랜치 위로 rebase), **Lean Finish** (default 브랜치에 merge), 중첩 Git Flow 메뉴 |
 | **Amend**                | 그래프에서 클릭 한 번으로 마지막 커밋을 즉시 수정(amend)                                |
 | **Merge**                | Default, `--no-ff`, `--ff-only`, squash merge 전략                                      |
 | **Rebase**               | 일반 rebase 및 드래그로 순서 변경 가능한 interactive rebase UI                          |
-| **Interactive Rebase**   | 액션 드롭다운 (pick, reword, edit, squash, fixup, drop), drop 경고, `fixup!`/`squash!` 커밋을 대상에 접어 넣는 autosquash 토글이 포함된 시각적 UI - 브랜치 또는 여러 커밋 선택에서 시작 |
+| **Interactive Rebase**   | 액션 드롭다운 (pick, reword, edit, squash, fixup, drop), drop 경고, `fixup!`/`squash!` 커밋을 대상에 접어 넣는 autosquash 토글이 포함된 키보드 조작형 시각적 UI - 브랜치 또는 여러 커밋 선택에서 시작. 선택적 classic 모드는 통합 터미널에서 `git rebase -i` 실행 (`gitGraphPlus.interactiveRebase.mode`) |
 | **드래그 Rebase/Merge**  | 그래프에서 한 브랜치를 다른 브랜치 위로 드래그하여 대상 위로 rebase하거나 대상에 merge  |
 | **Squash Commits**       | 그래프에서 연속된 여러 커밋을 선택해 하나로 합치기                                      |
 | **Fixup / Squash 커밋**  | 스테이징된 변경을 컨텍스트 메뉴에서 임의 커밋의 `fixup!` 또는 `squash!` 커밋으로 생성, autosquash 준비 |
@@ -114,6 +115,7 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | **이미지 Diff**     | 이미지 변경사항에 대한 나란히 보기 및 스와이프 비교                               |
 | **Patch 내보내기**  | 임의의 커밋을 `.patch` 파일로 저장                                                |
 | **에디터에서 열기** | diff 뷰어에서 파일 우클릭으로 파일 열기 또는 VS Code에서 변경사항 보기            |
+| **파일 경로 액션**  | 파일 우클릭으로 OS 파일 탐색기에서 보기, 절대 경로 복사, 또는 저장소 기준 상대 경로 복사 |
 | **변경 되돌리기**   | 커밋의 파일 전체, 단일 hunk, 또는 거터에서 선택한 줄을 작업 트리에 되돌리고, 선택한 줄을 복사 - diff에서 바로 |
 
 ### Stash & Worktree
@@ -187,6 +189,7 @@ VS Code를 위한 모던 Git GUI. 커밋 히스토리를 시각화하고, 브랜
 | `gitGraphPlus.loadMoreCommitCount`     | `50`          | **Load more commits** 클릭당 추가로 가져올 커밋 수    |
 | `gitGraphPlus.locale`                  | `auto`        | UI 언어 (`auto`, `en`, `ko`, `zh-cn`)                 |
 | `gitGraphPlus.graphSortOrder`          | `topological` | 커밋 정렬 순서 (`topological`, `date`, `author-date`) |
+| `gitGraphPlus.interactiveRebase.mode`  | `ui`          | Interactive rebase 모드 (`ui` 시각적 편집기, `classic` 터미널에서 `git rebase -i`) |
 | `gitGraphPlus.showSignatureStatus`     | `true`        | 그래프에 GPG/SSH 서명 상태 표시                       |
 | `gitGraphPlus.commitMessageLinks`      | `[]`          | 커밋 메시지 텍스트를 클릭 가능한 링크로 만드는 사용자 정의 `{ pattern, url }` 정규식 규칙 |
 | `gitGraphPlus.autoDetectRepoLinks`     | `true`        | `origin` 리모트 기반으로 `#123` 이슈(github.com/gitlab.com)와 `!123` GitLab MR 자동 링크 |

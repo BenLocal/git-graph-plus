@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.7.2 (2026-06-30)
+
+### New Features
+- **Branch Toolbar** - A Fork-style split button on the toolbar creates a branch (or worktree) seeded from the current branch, with Lean Sync (rebase the current branch onto the default branch), Lean Finish (merge it into the default branch), and a nested Git Flow menu.
+- **File Path Actions** - Right-click a changed file to reveal it in the OS file explorer, copy its absolute path, or copy its repo-relative path.
+- **Classic Interactive Rebase** - A new `gitGraphPlus.interactiveRebase.mode` setting can run `git rebase -i` in an integrated terminal using your own Git editor, instead of the visual modal.
+- **Keyboard-Driven Rebase Modal** - The interactive rebase modal is now keyboard-navigable and wider for easier editing.
+- **Smarter Range Selection** - Shift-clicking in the graph seeds the range from the current branch tip when nothing is selected yet.
+
+### Bug Fixes
+- **Detached HEAD Display** - While detached, rebasing, or bisecting, the toolbar badge and commit-row menus now show the short HEAD SHA (with a commit icon) and the full SHA in the tooltip, instead of git's raw "(no branch, ...)" label.
+- **Fixup / Squash Scope** - Fixup and squash actions are now hidden for commits that aren't on the current branch, where they wouldn't apply.
+- **Added / Deleted File Diffs** - Opening changes for an added or deleted file now works via an empty-tree fallback instead of failing.
+- **Selection Persistence** - The commit selection and row outline are kept while context-menu modals are open.
+
 ## 0.7.1 (2026-06-27)
 
 ### Performance
