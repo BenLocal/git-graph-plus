@@ -264,6 +264,26 @@ describe('buildFullGraph color palette exhaustion', () => {
     const colors = graph.paths.map(p => p.color);
     expect(new Set(colors).size).toBeLessThan(colors.length);
   });
+
+  it('cycles overflow colors instead of collapsing them all to color 0', () => {
+    // Regression for #59: with more simultaneously-active lanes than palette
+    // colors, pickColor used to return 0 for every overflow lane, so all lanes
+    // past the 12th rendered the same (blue) color. An octopus merge with 14
+    // parents creates 14 lanes over a 12-color palette; each color should be
+    // reused at most twice instead of color 0 absorbing every overflow lane.
+    const parents = Array.from({ length: 14 }, (_, i) => `p${i + 1}`);
+    const commits = [
+      makeCommit('M', parents),
+      ...parents.map(p => makeCommit(p, [])),
+    ];
+    const graph = buildFullGraph(commits);
+    const counts = new Map<number, number>();
+    for (const path of graph.paths) {
+      counts.set(path.color, (counts.get(path.color) ?? 0) + 1);
+    }
+    const maxReuse = Math.max(...counts.values());
+    expect(maxReuse).toBeLessThanOrEqual(2);
+  });
 });
 
 describe('buildFullGraph upstream-based remote-only detection', () => {

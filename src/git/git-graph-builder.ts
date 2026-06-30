@@ -245,7 +245,7 @@ function buildPushedSet(commits: Commit[], hashIndex: Map<string, number>): Set<
   return pushed;
 }
 
-function pickColor(unsolved: PathHelper[]): number {
+function pickColor(unsolved: PathHelper[], overflow: { n: number }): number {
   // Track used colors in a bitmask (palette is < 32 colors) instead of allocating an
   // array + Set on every call. O(lanes), allocation-free. This runs once per new
   // branch head and per merge parent, so it adds up on graphs with many lanes.
@@ -257,7 +257,10 @@ function pickColor(unsolved: PathHelper[]): number {
   for (let i = 0; i < COLOR_PALETTE.length; i++) {
     if ((mask & (1 << i)) === 0) return i;
   }
-  return 0;
+  // All palette colors are in use by simultaneously-active lanes (more lanes
+  // than colors). Keep cycling through the palette instead of always returning
+  // 0, so overflow lanes stay visually distinct rather than all turning blue.
+  return overflow.n++ % COLOR_PALETTE.length;
 }
 
 // ── Main parse function (SourceGit CommitGraph.Parse port) ──
@@ -281,6 +284,9 @@ export function buildFullGraph(
 
   const unsolved: PathHelper[] = [];
   const ended: PathHelper[] = [];
+  // Rotating fallback index for pickColor: advances each time the palette is
+  // fully in use so overflow lanes cycle through colors instead of all reusing 0.
+  const colorOverflow = { n: 0 };
   // Track the rail (PathHelper) each dot sits on so we can backfill the dot's
   // pattern color after the loop. A rail's override may be set by a tip that
   // appears lower on the rail than commits already processed top-to-bottom;
@@ -363,7 +369,7 @@ export function buildFullGraph(
     if (major === null) {
       offsetX += UNIT_W;
       if (commit.parents.length > 0) {
-        major = new PathHelper(commit.parents[0], pickColor(unsolved), { x: offsetX, y: offsetY });
+        major = new PathHelper(commit.parents[0], pickColor(unsolved, colorOverflow), { x: offsetX, y: offsetY });
         unsolved.push(major);
         trackNext(major);
         result.paths.push(major.path);
@@ -408,7 +414,7 @@ export function buildFullGraph(
         } else {
           // New path for merge parent
           offsetX += UNIT_W;
-          const l = new PathHelper(parentHash, pickColor(unsolved), position, { x: offsetX, y: position.y + HALF_H });
+          const l = new PathHelper(parentHash, pickColor(unsolved, colorOverflow), position, { x: offsetX, y: position.y + HALF_H });
           unsolved.push(l);
           trackNext(l);
           result.paths.push(l.path);
