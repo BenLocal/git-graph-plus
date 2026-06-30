@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.3 (2026-06-30)
+
+### Bug Fixes
+- **Graph Lane Colors** - When a graph has more concurrent lanes than the 12-color palette, the overflow lanes now keep cycling through the palette instead of all collapsing to the same blue.
+
 ## 0.7.2 (2026-06-30)
 
 ### New Features
