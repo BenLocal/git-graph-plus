@@ -585,26 +585,22 @@ export class GitService {
             // Insert the stash row directly above its base commit (the array is
             // newest-first, so splicing at the parent's index places the stash
             // just before — i.e. visually on top of — the commit it was created
-            // from). Skip if the base is outside the filtered scope.
+            // from). If the base commit isn't in the loaded window yet, hide the
+            // stash rather than pinning it to the top as an orphaned badge (#52):
+            // `--max-count` truncates the date-ordered walk to the newest N
+            // commits, so an old stash's base falls outside the window until the
+            // user loads more. Once a bigger `limit` pulls the base into the
+            // window, the stash reappears attached to the tree. Hidden stashes
+            // stay accessible in the sidebar Stash view.
             const parentIdx = commitHashIndex.get(sc.parents[0]);
             if (parentIdx !== undefined) {
               insertions.push({ idx: parentIdx, commit: sc });
-            } else if (
-              !options?.skip &&
-              (!options?.remoteFilter || options.remoteFilter.length === 0) &&
-              (!options?.branches || options.branches.length === 0)
-            ) {
-              // Only pin an out-of-scope stash to the top of the very first
-              // page; on paginated (skip>0) pages this would wrongly inject it
-              // into the middle of the history window.
-              insertions.push({ idx: -1, commit: sc });
             }
           }
           // Sort descending so earlier splices don't shift later indices
           insertions.sort((a, b) => b.idx - a.idx);
           for (const { idx, commit } of insertions) {
-            if (idx < 0) commits.unshift(commit);
-            else commits.splice(idx, 0, commit);
+            commits.splice(idx, 0, commit);
           }
         } catch (err) { this.warn(`stash log error: ${err instanceof Error ? err.message : err}`); }
       }

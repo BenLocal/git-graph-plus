@@ -513,10 +513,10 @@ describe('GitService — log() with stashes', () => {
     expect(stash.subject).toBe('WIP');
   });
 
-  it('unshifts a stash whose parent is outside scope when no filter is active', async () => {
+  it('hides a stash whose base is not in the loaded window (no filter active)', async () => {
     mockExec(service, async (args) => {
       if (args[0] === 'log' && !args.includes('--no-walk')) {
-        // Only c1 visible; parent of stash is "outside"
+        // Only c1 visible; the stash's base commit is not in the window
         return logRecord('c1', 'c1', 'only', '');
       }
       if (args[0] === 'stash' && args[1] === 'list') {
@@ -530,8 +530,8 @@ describe('GitService — log() with stashes', () => {
     });
 
     const commits = await service.log();
-    // Stash should be unshifted at the top
-    expect(commits[0].hash).toBe('sHash');
+    // Stash is hidden until its base is loaded (rather than orphaned at the top)
+    expect(commits.some(c => c.hash === 'sHash')).toBe(false);
   });
 
   it('drops a stash whose parent is out of scope when branches filter is active', async () => {
