@@ -2,12 +2,19 @@
   import { uiStore } from '../../lib/stores/ui.svelte';
   import { commitStore } from '../../lib/stores/commits.svelte';
   import { t } from '../../lib/i18n/index.svelte';
+  import type { Commit } from '../../lib/types';
   import CommitDetails from '../commit/CommitDetails.svelte';
 
+  interface Props {
+    commitOverride?: Commit;
+  }
+
+  let { commitOverride }: Props = $props();
+
   let commit = $derived(
-    uiStore.selectedCommitHash
+    commitOverride ?? (uiStore.selectedCommitHash
       ? commitStore.getCommit(uiStore.selectedCommitHash)
-      : undefined
+      : undefined)
   );
   // Armed but fewer than 2 picked yet → prompt the user to select more.
   let armedHint = $derived(uiStore.multiSelectArmed && uiStore.selectedCommitHashes.length < 2);

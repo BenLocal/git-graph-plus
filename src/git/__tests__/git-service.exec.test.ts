@@ -14,8 +14,16 @@ vi.mock('child_process', () => ({ spawn: vi.fn() }));
 // destroy(), so a plain EventEmitter avoids the real Readable's internal
 // setImmediate scheduling (which deadlocks against fake timers).
 function fakeStream() {
-  const s = new EventEmitter() as EventEmitter & { destroy: ReturnType<typeof vi.fn> };
+  const s = new EventEmitter() as EventEmitter & {
+    destroy: ReturnType<typeof vi.fn>;
+    setEncoding: ReturnType<typeof vi.fn>;
+    pause: ReturnType<typeof vi.fn>;
+    resume: ReturnType<typeof vi.fn>;
+  };
   s.destroy = vi.fn();
+  s.setEncoding = vi.fn();
+  s.pause = vi.fn();
+  s.resume = vi.fn();
   return s;
 }
 
@@ -112,5 +120,138 @@ describe('GitService.exec safety guards', () => {
     proc.stderr.emit('end');
     proc.emit('close', 0);
     await expect(p).resolves.toBe('git version 2.40.0');
+  });
+});
+
+describe('GitService.openHistory streaming reader', () => {
+  let service: GitService;
+  let proc: ReturnType<typeof fakeProc>;
+
+  const record = (hash: string, subject: string) => [
+    hash,
+    hash.slice(0, 7),
+    'Author',
+    'author@example.com',
+    '2026-01-01T00:00:00Z',
+    'Committer',
+    'committer@example.com',
+    '2026-01-01T00:00:00Z',
+    subject,
+    '',
+    '',
+    '',
+  ].join('\x00') + '\x00';
+
+  beforeEach(() => {
+    service = new GitService('/tmp/test-repo');
+    proc = fakeProc();
+    spawnMock.mockReturnValue(proc as unknown as ReturnType<typeof childProcess.spawn>);
+    (service as unknown as { getRemoteNames: () => Promise<string[]> }).getRemoteNames = vi.fn(async () => ['origin']);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('parses records across chunk boundaries from one git log process', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    const raw = `${record('aaaaaaaa', 'first')}${record('bbbbbbbb', 'second')}`;
+    proc.stdout.emit('data', raw.slice(0, 2));
+    proc.stdout.emit('data', raw.slice(2, 47));
+    proc.stdout.emit('data', raw.slice(47));
+    proc.emit('close', 0);
+
+    await expect(reader.next()).resolves.toMatchObject({ hash: 'aaaaaaaa', subject: 'first' });
+    await expect(reader.next()).resolves.toMatchObject({ hash: 'bbbbbbbb', subject: 'second' });
+    await expect(reader.next()).resolves.toBeNull();
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const args = spawnMock.mock.calls[0][1] as string[];
+    expect(args.some(arg => arg.startsWith('--skip='))).toBe(false);
+    expect(args.some(arg => arg.startsWith('--max-count='))).toBe(false);
+  });
+
+  it('kills the process and rejects a pending read when disposed', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    const pending = reader.next();
+    reader.dispose();
+
+    await expect(pending).rejects.toThrow(/cancelled/);
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('times out and kills a stalled active read without timing out an idle session', async () => {
+    vi.useFakeTimers();
+    service.setDefaultTimeout(20);
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    // Merely opening the reader starts no timeout; it begins when MainPanel
+    // requests the next commit.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(proc.kill).not.toHaveBeenCalled();
+
+    const pending = reader.next();
+    const assertion = expect(pending).rejects.toThrow(/timed out after 20ms/);
+    await vi.advanceTimersByTimeAsync(20);
+    await assertion;
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+    vi.useRealTimers();
+  });
+
+  it('surfaces a non-zero git exit to the reader', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    const pending = reader.next();
+    proc.stderr.emit('data', 'fatal: bad revision');
+    proc.emit('close', 128);
+
+    await expect(pending).rejects.toThrow(/bad revision/);
+  });
+
+  it('handles stdout pipe errors without an uncaught stream exception', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    const pending = reader.next();
+    proc.stdout.emit('error', new Error('stdout pipe broke'));
+
+    await expect(pending).rejects.toThrow(/stdout pipe broke/);
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('keeps the child error listener until close after a stream failure', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    const pending = reader.next();
+    proc.stdout.emit('error', new Error('first pipe failure'));
+    await expect(pending).rejects.toThrow(/first pipe failure/);
+
+    expect(() => proc.emit('error', new Error('later child failure'))).not.toThrow();
+    proc.emit('close', null);
+  });
+
+  it('handles stderr pipe errors without an uncaught stream exception', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    const pending = reader.next();
+    proc.stderr.emit('error', new Error('stderr pipe broke'));
+
+    await expect(pending).rejects.toThrow(/stderr pipe broke/);
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('rejects and kills git when one streamed record exceeds the memory bound', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    const pending = reader.next();
+    proc.stdout.emit('data', `\x01\x02\x03${'x'.repeat(16 * 1024 * 1024 + 1)}`);
+
+    await expect(pending).rejects.toThrow(/commit record exceeded/);
+    expect(proc.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('pauses and resumes stdout to keep buffered commits bounded', async () => {
+    const reader = await service.openHistory({ sortOrder: 'topological' });
+    proc.stdout.emit('data', Array.from({ length: 300 }, (_, index) =>
+      record(String(index).padStart(8, '0'), `commit ${index}`)
+    ).join(''));
+
+    expect(proc.stdout.pause).toHaveBeenCalled();
+    for (let index = 0; index < 236; index++) await reader.next();
+    expect(proc.stdout.resume).toHaveBeenCalled();
+    reader.dispose();
   });
 });

@@ -41,6 +41,66 @@ describe('GitService integration — search & stats', () => {
     });
   });
 
+  describe('openHistory', () => {
+    it('streams commits beyond the graph page from one stable history walk', async () => {
+      const target = commit(repo.path, 'deep history target');
+      commit(repo.path, 'newer one');
+      commit(repo.path, 'newer two');
+      commit(repo.path, 'newer three');
+
+      const history = await svc.openHistory({
+        sortOrder: 'topological',
+      });
+      const streamed = [];
+      for (;;) {
+        const item = await history.next();
+        if (!item) break;
+        streamed.push(item);
+      }
+      history.dispose();
+
+      expect(streamed.slice(0, 2).map(item => item.hash)).not.toContain(target);
+      expect(streamed.map(item => item.hash)).toContain(target);
+    });
+
+    it('keeps the initial revision walk stable when a branch moves mid-stream', async () => {
+      const root = commit(repo.path, 'root');
+      const second = commit(repo.path, 'second');
+      const third = commit(repo.path, 'third');
+      const fourth = commit(repo.path, 'fourth');
+      const history = await svc.openHistory({ sortOrder: 'topological' });
+
+      await expect(history.next()).resolves.toMatchObject({ hash: fourth });
+      runGit(repo.path, ['reset', '--hard', second]);
+
+      const remaining = [];
+      for (;;) {
+        const item = await history.next();
+        if (!item) break;
+        remaining.push(item.hash);
+      }
+      history.dispose();
+
+      expect(remaining).toContain(third);
+      expect(remaining).toContain(second);
+      expect(remaining).toContain(root);
+    });
+
+    it('does not split a commit whose body contains the legacy control-byte sentinel', async () => {
+      const sentinel = '\x01\x02\x03';
+      const hash = commit(repo.path, `control subject\n\nbefore${sentinel}after`);
+      const history = await svc.openHistory({ sortOrder: 'topological' });
+
+      await expect(history.next()).resolves.toMatchObject({
+        hash,
+        subject: 'control subject',
+        body: `before${sentinel}after`,
+      });
+      await expect(history.next()).resolves.toBeNull();
+      history.dispose();
+    });
+  });
+
   describe('searchByFile', () => {
     it('returns commits that touched the given path', async () => {
       commit(repo.path, 'unrelated', { 'a.txt': 'a\n' });

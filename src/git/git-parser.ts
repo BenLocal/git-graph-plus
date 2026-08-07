@@ -32,7 +32,7 @@ export function parseLog(raw: string, remoteNames?: string[]): Commit[] {
   return records.map(r => parseCommitRecord(r, remoteNames));
 }
 
-function parseCommitRecord(record: string, remoteNames?: string[]): Commit {
+export function parseCommitRecord(record: string, remoteNames?: string[]): Commit {
   const fields = record.split(FIELD_SEP);
 
   const hash = fields[0]?.trim() ?? '';
@@ -488,4 +488,3 @@ function unescapeGitPath(p: string): string {
   }
   return result;
 }
-

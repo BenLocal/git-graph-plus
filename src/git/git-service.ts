@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { existsSync } from 'fs';
 import { writeFile, unlink } from 'fs/promises';
 import { join } from 'path';
@@ -13,9 +13,9 @@ import { resolveGitDirs } from '../services/file-watcher-helpers';
  *  preventing a pathological --no-pager binary blob from eating the whole
  *  extension host. Callers can override per-invocation via `maxBufferBytes`. */
 const DEFAULT_MAX_BUFFER_BYTES = 256 * 1024 * 1024;
-import { parseLog, parseBranches, parseTags, parseRemotes, parseStashList, parseDiff, parseWorktreeList, parseLfsFiles, parseLfsLocks, mapSignatureStatus } from './git-parser';
+import { parseLog, parseCommitRecord, parseBranches, parseTags, parseRemotes, parseStashList, parseDiff, parseWorktreeList, parseLfsFiles, parseLfsLocks, mapSignatureStatus } from './git-parser';
 import { buildReversePatch } from './patch-builder';
-import type { Commit, BranchInfo, TagInfo, RemoteInfo, StashEntry, LogOptions, DiffData, WorktreeInfo, CommitSignature } from './types';
+import type { Commit, BranchInfo, TagInfo, RemoteInfo, StashEntry, LogOptions, HistoryOptions, HistoryReader, DiffData, WorktreeInfo, CommitSignature } from './types';
 
 export class GitError extends Error {
   constructor(
@@ -26,6 +26,255 @@ export class GitError extends Error {
   ) {
     super(`git ${args.join(' ')} failed (exit ${exitCode}): ${stderr.trim()}`);
     this.name = 'GitError';
+  }
+}
+
+const HISTORY_FIELD_SEPARATOR_COUNT = 11;
+const HISTORY_QUEUE_HIGH_WATER = 256;
+const HISTORY_QUEUE_LOW_WATER = 64;
+const HISTORY_QUEUE_HIGH_WATER_BYTES = 16 * 1024 * 1024;
+const HISTORY_QUEUE_LOW_WATER_BYTES = 4 * 1024 * 1024;
+const HISTORY_MAX_RECORD_BYTES = 16 * 1024 * 1024;
+const HISTORY_MAX_STDERR_BYTES = 1024 * 1024;
+
+/**
+ * Incremental reader for one `git log` process. Keeping the process alive
+ * makes the revision walk a stable snapshot and avoids re-walking every
+ * previously scanned commit for each UI result page.
+ */
+class StreamingHistoryReader implements HistoryReader {
+  private readonly queue: Array<{ commit: Commit; bytes: number }> = [];
+  private queueBytes = 0;
+  private readonly waiters: Array<{
+    resolve: (commit: Commit | null) => void;
+    reject: (error: unknown) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = [];
+  private stdoutBuffer = '';
+  private stderr = '';
+  private ended = false;
+  private disposed = false;
+  private failure: GitError | null = null;
+  private paused = false;
+
+  constructor(
+    private readonly proc: ChildProcessWithoutNullStreams,
+    private readonly args: string[],
+    private readonly remoteNames: string[],
+    private readonly readTimeoutMs: number,
+  ) {
+    proc.stdout.setEncoding('utf8');
+    proc.stderr.setEncoding('utf8');
+    proc.stdout.on('data', this.onStdout);
+    proc.stderr.on('data', this.onStderr);
+    proc.stdout.on('error', this.onStdoutError);
+    proc.stderr.on('error', this.onStderrError);
+    proc.on('error', this.onProcessError);
+    proc.on('close', this.onClose);
+  }
+
+  next(): Promise<Commit | null> {
+    if (this.queue.length > 0) {
+      const queued = this.queue.shift()!;
+      this.queueBytes -= queued.bytes;
+      this.resumeIfNeeded();
+      return Promise.resolve(queued.commit);
+    }
+    if (this.failure) return Promise.reject(this.failure);
+    if (this.ended) return Promise.resolve(null);
+    if (this.disposed) return Promise.reject(new GitError('Command cancelled', null, this.args));
+
+    this.resumeIfNeeded();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.fail(new GitError(`Command timed out after ${this.readTimeoutMs}ms`, null, this.args));
+      }, this.readTimeoutMs);
+      timer.unref?.();
+      this.waiters.push({ resolve, reject, timer });
+    });
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.ended = true;
+    this.queue.length = 0;
+    this.queueBytes = 0;
+    const error = new GitError('Command cancelled', null, this.args);
+    for (const waiter of this.waiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+    }
+    this.removeListeners();
+    this.killHard();
+  }
+
+  private readonly onStdout = (chunk: string | Buffer): void => {
+    if (this.disposed || this.failure) return;
+    this.stdoutBuffer += chunk.toString();
+    this.parseAvailableRecords(false);
+    if (!this.failure && Buffer.byteLength(this.stdoutBuffer) > HISTORY_MAX_RECORD_BYTES) {
+      this.fail(new GitError('git log: commit record exceeded 16777216 bytes', null, this.args));
+    }
+  };
+
+  private readonly onStderr = (chunk: string | Buffer): void => {
+    if (this.disposed || this.failure) return;
+    this.stderr += chunk.toString();
+    if (Buffer.byteLength(this.stderr) > HISTORY_MAX_STDERR_BYTES) {
+      this.fail(new GitError('git log: stderr exceeded 1048576 bytes', null, this.args));
+    }
+  };
+
+  private readonly onProcessError = (error: Error): void => {
+    this.fail(new GitError(error.message, null, this.args));
+  };
+
+  private readonly onStdoutError = (error: Error): void => {
+    this.fail(new GitError(error.message, null, this.args));
+  };
+
+  private readonly onStderrError = (error: Error): void => {
+    this.fail(new GitError(error.message, null, this.args));
+  };
+
+  private readonly onClose = (code: number | null): void => {
+    if (this.disposed || this.failure) {
+      this.removeListeners(true);
+      return;
+    }
+    if (code !== 0) {
+      this.fail(new GitError(this.stderr, code, this.args), true);
+      return;
+    }
+    this.parseAvailableRecords(true);
+    if (this.failure) {
+      this.removeListeners(true);
+      return;
+    }
+    this.ended = true;
+    this.removeListeners(true);
+    this.flushWaiters();
+  };
+
+  private parseAvailableRecords(final: boolean): void {
+    for (;;) {
+      let cursor = 0;
+      for (let field = 0; field < HISTORY_FIELD_SEPARATOR_COUNT; field++) {
+        const separator = this.stdoutBuffer.indexOf('\x00', cursor);
+        if (separator < 0) {
+          if (final && this.stdoutBuffer.length > 0) {
+            this.fail(new GitError('git log: incomplete commit record', null, this.args));
+          }
+          return;
+        }
+        cursor = separator + 1;
+      }
+
+      // `git log -z` appends a NUL after the formatted record. Commit data
+      // itself cannot contain NUL, so after the eleven field separators this
+      // is an unambiguous body terminator even when the body contains control
+      // bytes or newlines.
+      const terminator = this.stdoutBuffer.indexOf('\x00', cursor);
+      if (terminator < 0) {
+        if (final) this.fail(new GitError('git log: incomplete commit record', null, this.args));
+        return;
+      }
+
+      this.emitRecord(this.stdoutBuffer.slice(0, terminator));
+      if (this.failure) return;
+      this.stdoutBuffer = this.stdoutBuffer.slice(terminator + 1);
+      if (this.stdoutBuffer.length === 0) return;
+    }
+  }
+
+  private emitRecord(record: string): void {
+    if (!record.trim()) return;
+    const bytes = Buffer.byteLength(record);
+    if (bytes > HISTORY_MAX_RECORD_BYTES) {
+      this.fail(new GitError('git log: commit record exceeded 16777216 bytes', null, this.args));
+      return;
+    }
+    const commit = parseCommitRecord(record, this.remoteNames);
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(commit);
+    } else {
+      this.queue.push({ commit, bytes });
+      this.queueBytes += bytes;
+      if (!this.paused && (
+        this.queue.length >= HISTORY_QUEUE_HIGH_WATER ||
+        this.queueBytes >= HISTORY_QUEUE_HIGH_WATER_BYTES
+      )) {
+        this.proc.stdout.pause();
+        this.paused = true;
+      }
+    }
+  }
+
+  private resumeIfNeeded(): void {
+    if (
+      this.paused &&
+      this.queue.length <= HISTORY_QUEUE_LOW_WATER &&
+      this.queueBytes <= HISTORY_QUEUE_LOW_WATER_BYTES &&
+      !this.ended &&
+      !this.disposed
+    ) {
+      this.paused = false;
+      this.proc.stdout.resume();
+    }
+  }
+
+  private flushWaiters(): void {
+    while (this.waiters.length > 0 && this.queue.length > 0) {
+      const queued = this.queue.shift()!;
+      this.queueBytes -= queued.bytes;
+      const waiter = this.waiters.shift()!;
+      clearTimeout(waiter.timer);
+      waiter.resolve(queued.commit);
+    }
+    if (this.failure) {
+      for (const waiter of this.waiters.splice(0)) {
+        clearTimeout(waiter.timer);
+        waiter.reject(this.failure);
+      }
+    } else if (this.ended) {
+      for (const waiter of this.waiters.splice(0)) {
+        clearTimeout(waiter.timer);
+        waiter.resolve(null);
+      }
+    }
+  }
+
+  private fail(error: GitError, processClosed = false): void {
+    if (this.disposed || this.failure) return;
+    this.failure = error;
+    this.ended = true;
+    this.queue.length = 0;
+    this.queueBytes = 0;
+    this.removeListeners(processClosed);
+    if (!processClosed) this.killHard();
+    this.flushWaiters();
+  }
+
+  private removeListeners(processClosed = false): void {
+    this.proc.stdout.removeListener('data', this.onStdout);
+    this.proc.stderr.removeListener('data', this.onStderr);
+    if (processClosed) {
+      this.proc.stdout.removeListener('error', this.onStdoutError);
+      this.proc.stderr.removeListener('error', this.onStderrError);
+      this.proc.removeListener('error', this.onProcessError);
+      this.proc.removeListener('close', this.onClose);
+    }
+  }
+
+  private killHard(): void {
+    try { this.proc.kill('SIGTERM'); } catch { /* already dead */ }
+    const timer = setTimeout(() => {
+      try { this.proc.kill('SIGKILL'); } catch { /* already dead */ }
+    }, 5000);
+    timer.unref?.();
   }
 }
 
@@ -485,30 +734,7 @@ export class GitService {
       `--format=${format}`,
     ];
 
-    if (options?.branches && options.branches.length > 0) {
-      for (const branch of options.branches) {
-        this.assertSafeRef(branch, 'log');
-        args.push(branch);
-      }
-    } else if (!options?.remoteFilter || options.remoteFilter.length === 0) {
-      args.push('--glob=refs/heads', '--glob=refs/remotes', '--glob=refs/tags');
-    } else {
-      for (const source of options.remoteFilter) {
-        if (source === 'local') {
-          args.push('--glob=refs/heads');
-        } else {
-          args.push(`--glob=refs/remotes/${source}`);
-        }
-      }
-      // Omit --glob=refs/tags when filtering: tags on reachable commits still appear via %D,
-      // but tag-only commits outside the selected scope are correctly excluded.
-    }
-
-    args.push(
-      options?.sortOrder === 'topological' ? '--topo-order' :
-      options?.sortOrder === 'date' ? '--date-order' :
-      '--author-date-order'
-    );
+    this.appendHistoryScopeArgs(args, options);
 
     if (options?.limit) {
       args.push(`--max-count=${options.limit}`);
@@ -648,6 +874,59 @@ export class GitService {
     }
 
     return commits;
+  }
+
+  /**
+   * Open one graph-independent history walk. The returned reader owns the
+   * child process until it reaches EOF or is disposed by the caller.
+   */
+  async openHistory(options: HistoryOptions): Promise<HistoryReader> {
+    const args = [
+      'log',
+      '-z',
+      '--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%P%x00%D%x00%b',
+    ];
+    this.appendHistoryScopeArgs(args, options);
+    const remoteNames = await this.getRemoteNames();
+    const proc = spawn(getGitBinaryPath(), ['-c', 'core.quotePath=false', ...args], {
+      cwd: this.repoPath,
+      env: {
+        ...process.env,
+        ...this.extraEnv,
+        GIT_TERMINAL_PROMPT: '0',
+        LC_ALL: 'C',
+        GIT_MERGE_AUTOEDIT: 'no',
+        GIT_EDITOR: 'true',
+        EDITOR: 'true',
+      },
+    });
+    return new StreamingHistoryReader(proc, args, remoteNames, this.defaultTimeoutMs);
+  }
+
+  private appendHistoryScopeArgs(
+    args: string[],
+    options?: Pick<LogOptions, 'branches' | 'remoteFilter' | 'sortOrder'>,
+  ): void {
+    if (options?.branches && options.branches.length > 0) {
+      for (const branch of options.branches) {
+        this.assertSafeRef(branch, 'log');
+        args.push(branch);
+      }
+    } else if (!options?.remoteFilter || options.remoteFilter.length === 0) {
+      args.push('--glob=refs/heads', '--glob=refs/remotes', '--glob=refs/tags');
+    } else {
+      for (const source of options.remoteFilter) {
+        args.push(source === 'local' ? '--glob=refs/heads' : `--glob=refs/remotes/${source}`);
+      }
+      // Tags on reachable commits still appear via %D. Omitting tag roots here
+      // keeps a filtered graph/search from leaking tag-only history.
+    }
+
+    args.push(
+      options?.sortOrder === 'topological' ? '--topo-order' :
+      options?.sortOrder === 'date' ? '--date-order' :
+      '--author-date-order',
+    );
   }
 
   private async getRemoteNames(): Promise<string[]> {

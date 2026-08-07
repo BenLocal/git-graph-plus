@@ -80,6 +80,9 @@ export type WebviewMessage =
   | { type: 'createTag'; payload: { name: string; ref?: string; message?: string } }
   | { type: 'deleteTag'; payload: { name: string } }
   | { type: 'searchCommits'; payload: { query: string; author?: string; after?: string; before?: string } }
+  | { type: 'historySearchStart'; payload: { requestId: number; query: string } }
+  | { type: 'historySearchMore'; payload: { requestId: number } }
+  | { type: 'historySearchCancel'; payload: { requestId: number } }
   | { type: 'searchByHash'; payload: { hash: string } }
   | { type: 'searchByFile'; payload: { file: string } }
   | { type: 'getActivityLog' }
@@ -138,6 +141,9 @@ export type ExtensionMessage =
   | { type: 'commitSignatureData'; payload: { hash: string; signature: CommitSignature } }
   | { type: 'rebaseCommitsData'; payload: { base: string; commits: Commit[] } }
   | { type: 'searchResults'; payload: CommitGraphData }
+  | { type: 'historySearchPage'; payload: { requestId: number; commits: Commit[]; complete: boolean } }
+  | { type: 'historySearchError'; payload: { requestId: number; message: string } }
+  | { type: 'historySearchRestart' }
   | { type: 'activityLogData'; payload: Array<{ command: string; timestamp: string; success: boolean; duration: number }> }
   | { type: 'reflogData'; payload: { entries: Array<{ hash: string; shortHash: string; selector: string; message: string; date: string; dangling: boolean }>; hasMore: boolean } }
   | { type: 'repoChanged'; payload: { what: string } }

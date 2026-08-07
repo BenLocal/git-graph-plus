@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { Commit } from '../../git/types';
 
 // MainPanel hosts the webview and routes ~80 message types to GitService. We
 // can't run a real WebviewPanel, but with a vscode mock (panel + webview) and a
@@ -7,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const H = vi.hoisted(() => {
   const git: Record<string, ReturnType<typeof vi.fn>> = {
     log: vi.fn(async () => []),
+    openHistory: vi.fn(),
     branches: vi.fn(async () => []),
     tags: vi.fn(async () => []),
     remotes: vi.fn(async () => []),
@@ -35,6 +37,8 @@ const H = vi.hoisted(() => {
   return {
     git,
     messageHandler: null as null | ((m: unknown) => unknown),
+    configHandler: null as null | ((e: { affectsConfiguration: (key: string) => boolean }) => void),
+    repoChangeHandler: null as null | ((what: string) => unknown),
     panel: null as null | { webview: { postMessage: ReturnType<typeof vi.fn> } },
     repos: [] as Array<{ path: string; name: string; type: string }>,
   };
@@ -73,7 +77,10 @@ vi.mock('vscode', () => {
       getConfiguration: () => ({ get: (_k: string, d?: unknown) => d }),
       getWorkspaceFolder: () => ({ uri: { fsPath: '/repo' } }),
       workspaceFolders: [{ uri: { fsPath: '/repo' } }],
-      onDidChangeConfiguration: () => ({ dispose() {} }),
+      onDidChangeConfiguration: (cb: (e: { affectsConfiguration: (key: string) => boolean }) => void) => {
+        H.configHandler = cb;
+        return { dispose() {} };
+      },
       fs: { writeFile: vi.fn(async () => {}) },
     },
     commands: { executeCommand: vi.fn() },
@@ -92,7 +99,14 @@ vi.mock('../../git/git-service', async (orig) => {
   const actual = await orig<typeof import('../../git/git-service')>();
   return { ...actual, GitService: vi.fn(() => H.git) };
 });
-vi.mock('../../services/file-watcher', () => ({ FileWatcher: class { enabled = true; suppress() {} dispose() {} } }));
+vi.mock('../../services/file-watcher', () => ({
+  FileWatcher: class {
+    enabled = true;
+    constructor(_path: string, callback: (what: string) => unknown) { H.repoChangeHandler = callback; }
+    suppress() {}
+    dispose() {}
+  },
+}));
 vi.mock('../../services/repo-discovery', () => ({ RepoDiscoveryService: { discoverRepos: vi.fn(async () => H.repos), clearCache: vi.fn() } }));
 vi.mock('../../git/vscode-git-bridge', () => ({ triggerVSCodeGitAuth: vi.fn(async () => false) }));
 
@@ -116,6 +130,7 @@ beforeEach(() => {
   // Reset default git behaviour after clearAllMocks wiped implementations.
   for (const k of Object.keys(H.git)) H.git[k].mockReset();
   H.git.log.mockResolvedValue([]);
+  H.git.openHistory.mockImplementation(async () => historyReader([]));
   H.git.branches.mockResolvedValue([]);
   H.git.tags.mockResolvedValue([]);
   H.git.remotes.mockResolvedValue([]);
@@ -137,10 +152,18 @@ afterEach(() => {
   (MainPanel as unknown as { currentPanel: unknown }).currentPanel = undefined;
 });
 
-const commit = (hash: string) => ({
+const commit = (hash: string): Commit => ({
   hash, abbreviatedHash: hash.slice(0, 7), subject: 's', body: '', parents: [], refs: [],
   author: { name: '', email: '', date: '' }, committer: { name: '', email: '', date: '' },
 });
+
+function historyReader(commits: Commit[]) {
+  let index = 0;
+  return {
+    next: vi.fn(async () => commits[index++] ?? null),
+    dispose: vi.fn(),
+  };
+}
 
 describe('MainPanel construction', () => {
   it('creates a webview panel, sets its html, and posts the locale', () => {
@@ -168,6 +191,144 @@ describe('MainPanel message routing', () => {
     const data = postedOfType('logData').at(-1)!;
     expect(data.payload!.hasMore).toBe(true);
     expect((data.payload!.commits as unknown[]).length).toBe(1);
+  });
+
+  it('returns a full-history match from beyond the loaded graph page', async () => {
+    H.git.openHistory.mockResolvedValue(historyReader([
+      { ...commit('aaaaaaa1'), subject: 'newer commit' },
+      { ...commit('ddddddd4'), subject: 'deep history target' },
+    ]));
+
+    await dispatch({
+      type: 'historySearchStart',
+      payload: { requestId: 7, query: 'deep history target' },
+    });
+
+    expect(H.git.openHistory).toHaveBeenCalledTimes(1);
+    expect(postedOfType('historySearchPage').at(-1)).toMatchObject({
+      payload: {
+        requestId: 7,
+        commits: [{ hash: 'ddddddd4' }],
+        complete: true,
+      },
+    });
+  });
+
+  it('matches the same author and ref fields as the previous local search', async () => {
+    const matchingCommit: Commit = {
+        ...commit('ddddddd4'),
+        author: { name: 'Hidden Person', email: 'hidden@example.com', date: '' },
+        refs: [{ type: 'remote-branch', name: 'main', remote: 'origin' }],
+    };
+    H.git.openHistory.mockImplementation(async () => historyReader([matchingCommit]));
+
+    await dispatch({ type: 'historySearchStart', payload: { requestId: 8, query: 'hidden@example.com' } });
+    expect(postedOfType('historySearchPage').at(-1)?.payload?.commits).toMatchObject([{ hash: 'ddddddd4' }]);
+
+    await dispatch({ type: 'historySearchStart', payload: { requestId: 9, query: 'origin/main' } });
+    expect(postedOfType('historySearchPage').at(-1)?.payload?.commits).toMatchObject([{ hash: 'ddddddd4' }]);
+  });
+
+  it('drops an older search response after a newer query starts', async () => {
+    let resolveOld!: (value: Commit | null) => void;
+    const oldCommit = new Promise<Commit | null>(resolve => {
+      resolveOld = resolve;
+    });
+    const oldReader = { next: vi.fn(() => oldCommit), dispose: vi.fn() };
+    H.git.openHistory
+      .mockResolvedValueOnce(oldReader)
+      .mockResolvedValueOnce(historyReader([{ ...commit('bbbbbbb2'), subject: 'new query target' }]));
+
+    const oldRequest = dispatch({ type: 'historySearchStart', payload: { requestId: 10, query: 'old query' } });
+    await vi.waitFor(() => expect(oldReader.next).toHaveBeenCalledTimes(1));
+    await dispatch({ type: 'historySearchStart', payload: { requestId: 11, query: 'new query target' } });
+    resolveOld({ ...commit('aaaaaaa1'), subject: 'old query' });
+    await oldRequest;
+
+    expect(postedOfType('historySearchPage').some(message => message.payload?.requestId === 10)).toBe(false);
+    expect(postedOfType('historySearchPage').some(message => message.payload?.requestId === 11)).toBe(true);
+  });
+
+  it('paginates matches without changing the graph pagination state', async () => {
+    const history = Array.from({ length: 55 }, (_, index) => ({
+      ...commit(`hash${String(index).padStart(4, '0')}`),
+      subject: `matching commit ${index}`,
+    }));
+    H.git.openHistory.mockResolvedValue(historyReader(history));
+
+    await dispatch({ type: 'historySearchStart', payload: { requestId: 12, query: 'matching' } });
+    const first = postedOfType('historySearchPage').at(-1)!;
+    expect(first.payload?.commits).toHaveLength(50);
+    expect(first.payload?.complete).toBe(false);
+
+    await dispatch({ type: 'historySearchMore', payload: { requestId: 12 } });
+    const second = postedOfType('historySearchPage').at(-1)!;
+    expect(second.payload?.commits).toHaveLength(5);
+    expect(second.payload?.complete).toBe(true);
+  });
+
+  it('caps a search page by payload size without losing later matches', async () => {
+    const bodySizesMiB = [7, 2, 1];
+    const history = bodySizesMiB.map((size, index) => ({
+      ...commit(`large${index}`),
+      body: `matching ${'x'.repeat(size * 1024 * 1024)}`,
+    }));
+    H.git.openHistory.mockResolvedValue(historyReader(history));
+
+    await dispatch({ type: 'historySearchStart', payload: { requestId: 15, query: 'matching' } });
+    const first = postedOfType('historySearchPage').at(-1)!;
+    const firstCommits = first.payload?.commits as Commit[];
+    expect(firstCommits.map(item => item.hash)).toEqual(['large0']);
+    expect(first.payload?.complete).toBe(false);
+
+    await dispatch({ type: 'historySearchMore', payload: { requestId: 15 } });
+    const second = postedOfType('historySearchPage').at(-1)!;
+    const secondCommits = second.payload?.commits as Commit[];
+    expect(secondCommits.map(item => item.hash)).toEqual(['large1', 'large2']);
+    expect([...firstCommits, ...secondCommits].map(item => item.hash)).toEqual(history.map(item => item.hash));
+    expect(second.payload?.complete).toBe(true);
+  });
+
+  it('cancels and restarts an active search when graph ordering changes', async () => {
+    let resolveRead!: (value: Commit | null) => void;
+    const reader = {
+      next: vi.fn(() => new Promise<Commit | null>(resolve => { resolveRead = resolve; })),
+      dispose: vi.fn(() => resolveRead(null)),
+    };
+    H.git.openHistory.mockResolvedValue(reader);
+    const activeSearch = dispatch({
+      type: 'historySearchStart',
+      payload: { requestId: 13, query: 'target' },
+    });
+    await vi.waitFor(() => expect(reader.next).toHaveBeenCalled());
+
+    H.configHandler!({
+      affectsConfiguration: key => key === 'gitGraphPlus.graphSortOrder',
+    });
+    await activeSearch;
+
+    expect(reader.dispose).toHaveBeenCalled();
+    expect(postedOfType('historySearchRestart')).toHaveLength(1);
+  });
+
+  it('cancels and restarts an active search when refs move', async () => {
+    let resolveRead!: (value: Commit | null) => void;
+    const reader = {
+      next: vi.fn(() => new Promise<Commit | null>(resolve => { resolveRead = resolve; })),
+      dispose: vi.fn(() => resolveRead(null)),
+    };
+    H.git.openHistory.mockResolvedValue(reader);
+    const activeSearch = dispatch({
+      type: 'historySearchStart',
+      payload: { requestId: 14, query: 'target' },
+    });
+    await vi.waitFor(() => expect(reader.next).toHaveBeenCalled());
+
+    await H.repoChangeHandler!('refs');
+    await activeSearch;
+
+    expect(reader.dispose).toHaveBeenCalled();
+    expect(postedOfType('historySearchRestart')).toHaveLength(1);
   });
 
   it('openDiff for a commit builds the left URI from the resolved parent SHA, not the ~1 shorthand', async () => {
