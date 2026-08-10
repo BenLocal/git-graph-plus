@@ -23,6 +23,198 @@ import {
 } from '../utils/path-validation';
 import { SequenceGuard } from '../utils/sequence-guard';
 import { resolveDefaultWorktreePath } from '../utils/worktree-path';
+import type { Commit, HistoryOptions, HistoryReader } from '../git/types';
+
+type HistorySearchScope = HistoryOptions;
+
+/**
+ * One full-history search session owned by MainPanel. The panel remains the
+ * only entry point; this private controller only keeps pagination, matching,
+ * and cancellation state out of the already-large message switch.
+ */
+class HistorySearch {
+  private static readonly RESULT_PAGE_SIZE = 50;
+  private static readonly RESULT_PAGE_MAX_BYTES = 8 * 1024 * 1024;
+  private static readonly MAX_QUERY_LENGTH = 1000;
+
+  private requestId: number | null = null;
+  private query = '';
+  private complete = true;
+  private generation = 0;
+  private reader: HistoryReader | null = null;
+  private pendingMatch: Commit | null = null;
+  private running = false;
+
+  constructor(
+    private readonly getGitService: () => GitService,
+    private readonly post: (message: unknown) => void,
+  ) {}
+
+  async start(requestId: number, query: string, scope: HistorySearchScope): Promise<void> {
+    this.cancel();
+    if (!Number.isSafeInteger(requestId) || requestId < 0 || typeof query !== 'string') return;
+    const normalized = query.trim().toLowerCase();
+    // eslint-disable-next-line no-control-regex
+    if (
+      !normalized ||
+      normalized.length > HistorySearch.MAX_QUERY_LENGTH ||
+      /[\x00-\x1f\x7f]/.test(normalized)
+    ) {
+      this.post({ type: 'historySearchError', payload: { requestId, message: 'Invalid search query' } });
+      return;
+    }
+
+    this.requestId = requestId;
+    this.query = normalized;
+    const frozenScope: HistorySearchScope = {
+      branches: scope.branches ? [...scope.branches] : undefined,
+      remoteFilter: scope.remoteFilter ? [...scope.remoteFilter] : undefined,
+      sortOrder: scope.sortOrder,
+    };
+    this.complete = false;
+    const generation = this.generation;
+    this.running = true;
+    try {
+      const reader = await this.getGitService().openHistory(frozenScope);
+      if (generation !== this.generation || requestId !== this.requestId) {
+        reader.dispose();
+        return;
+      }
+      this.reader = reader;
+      this.running = false;
+      await this.loadNextPage();
+    } catch (error) {
+      if (generation !== this.generation || requestId !== this.requestId) return;
+      this.running = false;
+      this.complete = true;
+      this.post({
+        type: 'historySearchError',
+        payload: { requestId, message: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
+
+  async more(requestId: number): Promise<void> {
+    if (requestId !== this.requestId || this.complete || this.running) return;
+    await this.loadNextPage();
+  }
+
+  cancel(requestId?: number): void {
+    if (requestId !== undefined && requestId !== this.requestId) return;
+    this.generation++;
+    this.reader?.dispose();
+    this.reader = null;
+    this.pendingMatch = null;
+    this.requestId = null;
+    this.query = '';
+    this.complete = true;
+    this.running = false;
+  }
+
+  dispose(): void {
+    this.cancel();
+  }
+
+  invalidate(): boolean {
+    const wasActive = this.requestId !== null;
+    this.cancel();
+    return wasActive;
+  }
+
+  private async loadNextPage(): Promise<void> {
+    if (this.requestId === null || this.reader === null) return;
+    const requestId = this.requestId;
+    const generation = this.generation;
+    this.running = true;
+    let matches: Commit[] = this.pendingMatch ? [this.pendingMatch] : [];
+    let resultBytes = this.pendingMatch ? HistorySearch.estimateCommitBytes(this.pendingMatch) : 0;
+    this.pendingMatch = null;
+
+    try {
+      while (
+        matches.length < HistorySearch.RESULT_PAGE_SIZE &&
+        resultBytes < HistorySearch.RESULT_PAGE_MAX_BYTES &&
+        !this.complete
+      ) {
+        const commit = await this.reader.next();
+        if (generation !== this.generation || requestId !== this.requestId) return;
+        if (commit === null) {
+          this.complete = true;
+          this.reader = null;
+          break;
+        }
+        if (this.matches(commit)) {
+          const commitBytes = HistorySearch.estimateCommitBytes(commit);
+          if (matches.length > 0 && resultBytes + commitBytes > HistorySearch.RESULT_PAGE_MAX_BYTES) {
+            this.pendingMatch = commit;
+            break;
+          }
+          matches = [...matches, commit];
+          resultBytes += commitBytes;
+        }
+      }
+
+      if (generation !== this.generation || requestId !== this.requestId) return;
+      this.post({
+        type: 'historySearchPage',
+        payload: { requestId, commits: matches, complete: this.complete },
+      });
+    } catch (error) {
+      if (generation !== this.generation || requestId !== this.requestId) return;
+      this.complete = true;
+      this.reader?.dispose();
+      this.reader = null;
+      this.post({
+        type: 'historySearchError',
+        payload: { requestId, message: error instanceof Error ? error.message : String(error) },
+      });
+    } finally {
+      if (generation === this.generation) {
+        this.running = false;
+      }
+    }
+  }
+
+  private matches(commit: Commit): boolean {
+    const refs = commit.refs
+      .filter(ref => ref.type === 'branch' || ref.type === 'remote-branch' || ref.type === 'tag' || ref.type === 'head')
+      .flatMap(ref => {
+        if (ref.type === 'head') return ['HEAD'];
+        if (ref.type === 'remote-branch' && ref.remote) return [ref.name, `${ref.remote}/${ref.name}`];
+        return [ref.name];
+      });
+    const haystack = [
+      commit.subject,
+      commit.body,
+      commit.author.name,
+      commit.author.email,
+      commit.hash,
+      commit.abbreviatedHash,
+      ...refs,
+    ].join(' ').toLowerCase();
+    return haystack.includes(this.query);
+  }
+
+  private static estimateCommitBytes(commit: Commit): number {
+    const strings = [
+      commit.hash,
+      commit.abbreviatedHash,
+      commit.subject,
+      commit.body,
+      commit.author.name,
+      commit.author.email,
+      commit.author.date,
+      commit.committer.name,
+      commit.committer.email,
+      commit.committer.date,
+      commit.signatureStatus ?? '',
+      ...commit.parents,
+      ...commit.refs.flatMap(ref => [ref.type, ref.name, ref.remote ?? '']),
+    ];
+    // Include a small structural allowance for object keys and clone metadata.
+    return strings.reduce((bytes, value) => bytes + Buffer.byteLength(value, 'utf8'), 256);
+  }
+}
 
 export class MainPanel {
   public static currentPanel: MainPanel | undefined;
@@ -41,6 +233,7 @@ export class MainPanel {
   private readonly extensionUri: vscode.Uri;
   private repoPath: string;
   private gitService: GitService;
+  private readonly historySearch: HistorySearch;
   private fileWatcher: FileWatcher;
   private disposables: vscode.Disposable[] = [];
   private allConflictFiles: string[] = [];
@@ -201,6 +394,7 @@ export class MainPanel {
     this.extensionUri = extensionUri;
     this.repoPath = repoPath;
     this.gitService = this.createGitService(repoPath);
+    this.historySearch = new HistorySearch(() => this.gitService, message => this.post(message));
 
     this.fileWatcher = new FileWatcher(repoPath, (what) => {
       this.onRepoChanged(what);
@@ -214,6 +408,9 @@ export class MainPanel {
           this.fileWatcher.enabled = vscode.workspace.getConfiguration('gitGraphPlus').get<boolean>('autoRefresh', true);
         }
         if (e.affectsConfiguration('gitGraphPlus.graphSortOrder')) {
+          if (this.historySearch.invalidate()) {
+            this.post({ type: 'historySearchRestart' });
+          }
           this.refreshAll();
         }
         if (e.affectsConfiguration('gitGraphPlus.avatarSource')) {
@@ -353,6 +550,7 @@ export class MainPanel {
    * stale response paint the previous repo's graph over the current one.
    */
   private swapRepo(newPath: string): void {
+    this.historySearch.cancel();
     this.repoPath = newPath;
     this.gitService = this.createGitService(newPath);
 
@@ -1179,6 +1377,26 @@ export class MainPanel {
           this.post({ type: 'commitSignatureData', payload: { hash: message.payload.hash, signature } });
           break;
         }
+        case 'historySearchStart': {
+          const cfg = vscode.workspace.getConfiguration('gitGraphPlus');
+          const sortOrder = cfg.get<'author-date' | 'date' | 'topological'>('graphSortOrder', 'topological');
+          const remoteFilter = this.isFirstGetLog ? MainPanel.savedRemoteFilter : this.currentRemoteFilter;
+          const branchFilter = this.isFirstGetLog ? MainPanel.savedBranchFilter : this.currentBranchFilter;
+          await this.historySearch.start(message.payload.requestId, message.payload.query, {
+            remoteFilter,
+            branches: branchFilter,
+            sortOrder,
+          });
+          break;
+        }
+        case 'historySearchMore': {
+          await this.historySearch.more(message.payload.requestId);
+          break;
+        }
+        case 'historySearchCancel': {
+          this.historySearch.cancel(message.payload.requestId);
+          break;
+        }
         case 'searchCommits': {
           // searchSequence guards against a stale response overwriting a
           // newer one when the user types fast. Same pattern as getLog.
@@ -1912,6 +2130,9 @@ export class MainPanel {
     });
 
     if (shouldRefreshGraph(what)) {
+      if (what !== 'status' && this.historySearch.invalidate()) {
+        this.post({ type: 'historySearchRestart' });
+      }
       // A pure working-tree/index edit ('status') only affects the log's
       // uncommitted row — refs, remotes and the sidebar are untouched — so do a
       // log-only partial refresh. 'unknown' stays full to be safe.
@@ -2008,6 +2229,7 @@ export class MainPanel {
 
   private dispose(): void {
     this.disposed = true;
+    this.historySearch.dispose();
     MainPanel.savedRemoteFilter = this.currentRemoteFilter;
     MainPanel.savedBranchFilter = this.currentBranchFilter;
     // Drop any modal request that was queued for this panel but never delivered

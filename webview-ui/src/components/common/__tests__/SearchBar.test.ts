@@ -2,142 +2,86 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import SearchBar from '../SearchBar.svelte';
 import { i18n } from '../../../lib/i18n/index.svelte';
-import { commitStore } from '../../../lib/stores/commits.svelte';
-import type { Commit, BranchInfo } from '../../../lib/types';
-
-function commit(over: Partial<Commit>): Commit {
-  return {
-    hash: 'h',
-    abbreviatedHash: 'h',
-    author: { name: 'A', email: 'a@x.com', date: '' },
-    committer: { name: 'A', email: 'a@x.com', date: '' },
-    subject: 'subject',
-    body: '',
-    parents: [],
-    refs: [],
-    ...over,
-  };
-}
-
-function setCommits(commits: Commit[]) {
-  commitStore.commits = commits;
-}
+import type { BranchInfo } from '../../../lib/types';
 
 const baseProps = {
-  onResults: vi.fn(),
-  onNavigate: vi.fn(),
+  onSearch: vi.fn(),
+  onClear: vi.fn(),
+  onPrevious: vi.fn(),
+  onNext: vi.fn(),
 };
 
 beforeEach(() => {
   i18n.setLocale('en');
-  setCommits([]);
   vi.useFakeTimers();
 });
 
 describe('SearchBar — basic search', () => {
-  it('typing then waiting 150ms triggers a search (debounce)', async () => {
-    setCommits([
-      commit({ hash: 'h1', subject: 'fix login bug' }),
-      commit({ hash: 'h2', subject: 'add feature' }),
-    ]);
-    const onResults = vi.fn();
-    const onNavigate = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults, onNavigate });
+  it('typing then waiting 150ms requests a full-history search', async () => {
+    const onSearch = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onSearch });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
-    await fireEvent.input(input, { target: { value: 'login' } });
+    await fireEvent.input(input, { target: { value: '  login  ' } });
     vi.advanceTimersByTime(150);
-    expect(onResults).toHaveBeenCalled();
-    const matched = onResults.mock.calls.at(-1)![0] as Set<string>;
-    expect(matched.has('h1')).toBe(true);
-    expect(matched.has('h2')).toBe(false);
-    expect(onNavigate).toHaveBeenCalledWith('h1');
+    expect(onSearch).toHaveBeenCalledWith('login');
   });
 
-  it('clearing the input passes null to onResults', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'fix' })]);
-    const onResults = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults });
+  it('Enter submits once and cancels the pending debounce', async () => {
+    const onSearch = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onSearch });
+    const input = container.querySelector<HTMLInputElement>('.search-input')!;
+    await fireEvent.input(input, { target: { value: 'login' } });
+    await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
+    expect(onSearch).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(150);
+    expect(onSearch).toHaveBeenCalledOnce();
+  });
+
+  it('clearing the input cancels the active search', async () => {
+    const onClear = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onClear });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
     await fireEvent.input(input, { target: { value: 'fix' } });
     vi.advanceTimersByTime(150);
-    onResults.mockClear();
+    onClear.mockClear();
     await fireEvent.input(input, { target: { value: '' } });
-    expect(onResults).toHaveBeenLastCalledWith(null);
+    expect(onClear).toHaveBeenCalledOnce();
   });
 
-  it('no-match search passes an empty Set, not null', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'fix' })]);
-    const onResults = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults });
+  it('shows an inexact total while the backend has more history to scan', async () => {
+    const { container } = render(SearchBar, {
+      ...baseProps,
+      resultCount: 50,
+      currentIndex: 0,
+      searchComplete: false,
+    });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
-    await fireEvent.input(input, { target: { value: 'no match here' } });
-    vi.advanceTimersByTime(150);
-    const matched = onResults.mock.calls.at(-1)![0] as Set<string>;
-    expect(matched).toBeInstanceOf(Set);
-    expect(matched.size).toBe(0);
-  });
-
-  it('matches on author name, email, hash, and refs', async () => {
-    setCommits([
-      commit({ hash: 'aaa111', author: { name: 'Carol', email: 'c@x.com', date: '' }, subject: 's' }),
-      commit({ hash: 'bbb222', subject: 's', refs: [{ type: 'branch', name: 'feature/login' }] }),
-      commit({ hash: 'ccc333', subject: 's', refs: [{ type: 'remote-branch', name: 'main', remote: 'origin' }] }),
-    ]);
-    const onResults = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults });
-    const input = container.querySelector<HTMLInputElement>('.search-input')!;
-
-    await fireEvent.input(input, { target: { value: 'Carol' } });
-    vi.advanceTimersByTime(150);
-    expect((onResults.mock.calls.at(-1)![0] as Set<string>).has('aaa111')).toBe(true);
-
-    await fireEvent.input(input, { target: { value: 'feature/login' } });
-    vi.advanceTimersByTime(150);
-    expect((onResults.mock.calls.at(-1)![0] as Set<string>).has('bbb222')).toBe(true);
-
-    await fireEvent.input(input, { target: { value: 'origin/main' } });
-    vi.advanceTimersByTime(150);
-    expect((onResults.mock.calls.at(-1)![0] as Set<string>).has('ccc333')).toBe(true);
+    await fireEvent.input(input, { target: { value: 'match' } });
+    expect(container.querySelector('.count-total')?.textContent).toBe('50+');
   });
 });
 
 describe('SearchBar — keyboard navigation', () => {
-  it('Enter goes to next match when there are existing results', async () => {
-    setCommits([
-      commit({ hash: 'h1', subject: 'match a' }),
-      commit({ hash: 'h2', subject: 'match b' }),
-    ]);
-    const onNavigate = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onNavigate });
+  it('Enter requests the next result when results exist', async () => {
+    const onNext = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onNext, resultCount: 2, currentIndex: 0 });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
     await fireEvent.input(input, { target: { value: 'match' } });
-    vi.advanceTimersByTime(150);
-    onNavigate.mockClear();
     await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
-    expect(onNavigate).toHaveBeenCalledWith('h2');
-    await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
-    expect(onNavigate).toHaveBeenLastCalledWith('h1'); // wraps
+    expect(onNext).toHaveBeenCalledOnce();
   });
 
-  it('Shift+Enter navigates backwards (wraps to last)', async () => {
-    setCommits([
-      commit({ hash: 'h1', subject: 'match a' }),
-      commit({ hash: 'h2', subject: 'match b' }),
-    ]);
-    const onNavigate = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onNavigate });
+  it('Shift+Enter requests the previous result', async () => {
+    const onPrevious = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onPrevious, resultCount: 2, currentIndex: 0 });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
     await fireEvent.input(input, { target: { value: 'match' } });
-    vi.advanceTimersByTime(150);
-    onNavigate.mockClear();
     await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter', shiftKey: true });
-    expect(onNavigate).toHaveBeenCalledWith('h2');
+    expect(onPrevious).toHaveBeenCalledOnce();
   });
 
   it('Escape with no open dropdown clears the query', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'x' })]);
-    const onResults = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults });
+    const { container } = render(SearchBar, baseProps);
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
     await fireEvent.input(input, { target: { value: 'x' } });
     vi.advanceTimersByTime(150);
@@ -146,7 +90,6 @@ describe('SearchBar — keyboard navigation', () => {
   });
 
   it('prev/next buttons are disabled when no matches', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'foo' })]);
     const { container } = render(SearchBar, baseProps);
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
     await fireEvent.input(input, { target: { value: 'zzz' } });
@@ -158,15 +101,14 @@ describe('SearchBar — keyboard navigation', () => {
   });
 
   it('clicking the X button clears the search', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'foo' })]);
-    const onResults = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults });
+    const onClear = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onClear });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
     await fireEvent.input(input, { target: { value: 'foo' } });
     vi.advanceTimersByTime(150);
-    onResults.mockClear();
+    onClear.mockClear();
     await fireEvent.click(container.querySelector<HTMLButtonElement>('.close-btn')!);
-    expect(onResults).toHaveBeenCalledWith(null);
+    expect(onClear).toHaveBeenCalledOnce();
     expect(input.value).toBe('');
   });
 });
@@ -206,18 +148,16 @@ describe('SearchBar — filter UI', () => {
   });
 
   it('Enter with empty query clears (no search posted)', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'foo' })]);
-    const onResults = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults });
-    onResults.mockClear();
+    const onClear = vi.fn();
+    const { container } = render(SearchBar, { ...baseProps, onClear });
+    onClear.mockClear();
     // Press Enter without typing anything — Enter with no matches and no query
     // falls through to doSearch(), which sees empty query and calls clear().
     await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
-    expect(onResults).toHaveBeenLastCalledWith(null);
+    expect(onClear).toHaveBeenCalledOnce();
   });
 
   it('Escape closes the open branch-filter dropdown without clearing the query', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'foo' })]);
     const branches = [{ name: 'main', current: true, ahead: 0, behind: 0, hash: 'h' }];
     const { container } = render(SearchBar, { ...baseProps, branches });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
@@ -250,7 +190,6 @@ describe('SearchBar — filter UI', () => {
   });
 
   it('Escape closes the open source-filter dropdown without clearing the query', async () => {
-    setCommits([commit({ hash: 'h1', subject: 'foo' })]);
     const { container } = render(SearchBar, { ...baseProps, remotes: ['origin'] });
     const input = container.querySelector<HTMLInputElement>('.search-input')!;
     await fireEvent.input(input, { target: { value: 'foo' } });
@@ -260,23 +199,6 @@ describe('SearchBar — filter UI', () => {
     await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Escape' });
     expect(container.querySelector('.dropdown')).toBeNull();
     expect(input.value).toBe('foo');
-  });
-});
-
-describe('SearchBar — HEAD keyword', () => {
-  it('typing HEAD matches the commit carrying a head ref', async () => {
-    setCommits([
-      commit({ hash: 'h1', subject: 'one' }),
-      commit({ hash: 'h2', subject: 'two', refs: [{ type: 'head', name: 'HEAD' }] }),
-    ]);
-    const onResults = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onResults });
-    const input = container.querySelector<HTMLInputElement>('.search-input')!;
-    await fireEvent.input(input, { target: { value: 'HEAD' } });
-    vi.advanceTimersByTime(150);
-    const matched = onResults.mock.calls.at(-1)![0] as Set<string>;
-    expect(matched.has('h2')).toBe(true);
-    expect(matched.has('h1')).toBe(false);
   });
 });
 
@@ -334,7 +256,6 @@ describe('SearchBar — branch filter', () => {
 
 describe('SearchBar — jump to HEAD button', () => {
   it('is disabled when no commit is HEAD', () => {
-    setCommits([commit({ hash: 'h1' })]);
     const { container } = render(SearchBar, { ...baseProps });
     const btn = container.querySelector<HTMLButtonElement>('.head-btn')!;
     expect(btn).toBeTruthy();
@@ -342,9 +263,8 @@ describe('SearchBar — jump to HEAD button', () => {
   });
 
   it('is enabled and calls onJumpToHead when clicked', async () => {
-    setCommits([commit({ hash: 'h1', refs: [{ type: 'head', name: 'HEAD' }] })]);
     const onJumpToHead = vi.fn();
-    const { container } = render(SearchBar, { ...baseProps, onJumpToHead });
+    const { container } = render(SearchBar, { ...baseProps, hasHead: true, onJumpToHead });
     const btn = container.querySelector<HTMLButtonElement>('.head-btn')!;
     expect(btn.disabled).toBe(false);
     await fireEvent.click(btn);
@@ -352,8 +272,7 @@ describe('SearchBar — jump to HEAD button', () => {
   });
 
   it('has the active class when headOffscreen is true', () => {
-    setCommits([commit({ hash: 'h1', refs: [{ type: 'head', name: 'HEAD' }] })]);
-    const { container } = render(SearchBar, { ...baseProps, headOffscreen: true });
+    const { container } = render(SearchBar, { ...baseProps, hasHead: true, headOffscreen: true });
     const btn = container.querySelector<HTMLButtonElement>('.head-btn')!;
     expect(btn.classList.contains('active')).toBe(true);
   });

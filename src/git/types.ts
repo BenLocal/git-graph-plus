@@ -172,3 +172,16 @@ export interface LogOptions {
    *  commit in the log, which is slow on large repos. */
   includeSignature?: boolean;
 }
+
+/** The same revision scope and ordering used by the graph's full-history search. */
+export interface HistoryOptions {
+  branches?: string[];
+  remoteFilter?: string[];
+  sortOrder: 'author-date' | 'date' | 'topological';
+}
+
+/** A single, stable `git log` walk consumed incrementally by full-history search. */
+export interface HistoryReader {
+  next(): Promise<Commit | null>;
+  dispose(): void;
+}

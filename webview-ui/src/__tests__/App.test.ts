@@ -40,6 +40,11 @@ beforeEach(() => {
   i18n.setLocale('en');
   resetStores();
   globalThis.__postedMessages = [];
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
 });
 
 // App's onMount registers window-level listeners (message, keydown, etc.)
@@ -1480,7 +1485,7 @@ describe('App — search result highlighting', () => {
     };
   }
 
-  it('highlights matched rows and navigates to the first match on search', async () => {
+  it('renders backend search results and navigates between them', async () => {
     const { container } = render(App);
     postMsg('logData', {
       commits: [commitRow('aaaaaaa1', 'findme please'), commitRow('bbbbbbb2', 'unrelated')],
@@ -1488,15 +1493,218 @@ describe('App — search result highlighting', () => {
     });
     const input = await waitFor(() => container.querySelector<HTMLInputElement>('.search-input')!);
     await fireEvent.input(input, { target: { value: 'findme' } });
-    // Enter with no prior matches runs doSearch → onResults + onNavigate, which
-    // exercises App's handleSearchResults / handleSearchNavigate.
     await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
-    await waitFor(() => container.querySelector('.commit-row.search-match'));
-    // The matching row is highlighted (handleSearchResults set searchMatchedHashes).
-    expect(container.querySelector('.commit-row.search-match')).not.toBeNull();
-    // The first match is the navigation target (handleSearchNavigate set searchNavigateHash).
-    expect(container.querySelector('.commit-row.search-current')).not.toBeNull();
-    // The non-matching row is dimmed.
-    expect(container.querySelector('.commit-row.search-dim')).not.toBeNull();
+
+    const request = globalThis.__postedMessages
+      .map(entry => entry.data as { type?: string; payload?: { requestId?: number } })
+      .find(entry => entry.type === 'historySearchStart')!;
+    postMsg('historySearchPage', {
+      requestId: request.payload!.requestId,
+      commits: [
+        commitRow('aaaaaaa1', 'findme please'),
+        commitRow('ccccccc3', 'findme elsewhere'),
+      ],
+      complete: true,
+    });
+
+    await waitFor(() => expect(container.querySelectorAll('.search-result-row')).toHaveLength(2));
+    expect(container.querySelectorAll('.search-result-row')[0].classList.contains('selected')).toBe(true);
+    vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
+    await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
+    expect(container.querySelectorAll('.search-result-row')[1].classList.contains('selected')).toBe(true);
+    await waitFor(() => expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled());
+  });
+
+  it('shows a full-history match that is not loaded in the graph', async () => {
+    const { container } = render(App);
+    postMsg('logData', {
+      commits: [commitRow('aaaaaaa1', 'loaded commit')],
+      paths: [], links: [], dots: [], commitLeftMargin: [], graph: [], hasMore: true, currentLimit: 1,
+    });
+
+    const input = await waitFor(() => container.querySelector<HTMLInputElement>('.search-input')!);
+    await fireEvent.input(input, { target: { value: 'deep history target' } });
+
+    const request = await waitFor(() => {
+      const message = globalThis.__postedMessages
+        .map(entry => entry.data as { type?: string; payload?: { requestId?: number; query?: string } })
+        .find(entry => entry.type === 'historySearchStart');
+      expect(message?.payload?.query).toBe('deep history target');
+      return message!;
+    });
+
+    const deepCommit = commitRow('ddddddd4', 'deep history target');
+    postMsg('historySearchPage', {
+      requestId: request.payload!.requestId,
+      commits: [deepCommit],
+      complete: true,
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector('.search-result-row')?.textContent).toContain('deep history target');
+    });
+    expect(commitStore.getCommit(deepCommit.hash)).toBeUndefined();
+  });
+
+  it('loads another search page and restores the original graph when cleared', async () => {
+    const loadedCommit = commitRow('aaaaaaa1', 'loaded commit');
+    const { container } = render(App);
+    postMsg('logData', {
+      commits: [loadedCommit],
+      paths: [], links: [], dots: [], commitLeftMargin: [], graph: [], hasMore: true, currentLimit: 1,
+    });
+
+    const input = await waitFor(() => container.querySelector<HTMLInputElement>('.search-input')!);
+    await fireEvent.input(input, { target: { value: 'target' } });
+    await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
+    const request = globalThis.__postedMessages
+      .map(entry => entry.data as { type?: string; payload?: { requestId?: number } })
+      .find(entry => entry.type === 'historySearchStart')!;
+    postMsg('historySearchPage', {
+      requestId: request.payload!.requestId,
+      commits: [commitRow('bbbbbbb2', 'target one')],
+      complete: false,
+    });
+
+    const loadMore = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('.load-more');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    await fireEvent.click(loadMore);
+    expect(globalThis.__postedMessages.some(entry => {
+      const message = entry.data as { type?: string; payload?: { requestId?: number } };
+      return message.type === 'historySearchMore' && message.payload?.requestId === request.payload!.requestId;
+    })).toBe(true);
+
+    await fireEvent.click(container.querySelector<HTMLButtonElement>('.close-btn')!);
+    await waitFor(() => expect(container.querySelector('.search-results')).toBeNull());
+    expect(container.querySelector('.commit-row')?.textContent).toContain('loaded commit');
+    expect(commitStore.commits.map(commit => commit.hash)).toEqual(['aaaaaaa1']);
+    expect(globalThis.__postedMessages.some(entry => {
+      const message = entry.data as { type?: string };
+      return message.type === 'historySearchCancel';
+    })).toBe(true);
+  });
+
+  it('clears an in-flight history search when the active repository changes', async () => {
+    const loadedCommit = commitRow('aaaaaaa1', 'loaded commit');
+    const { container } = render(App);
+    postMsg('repoList', {
+      repos: [{ path: '/r/a', name: 'a', type: 'root' }],
+      active: '/r/a',
+    });
+    postMsg('logData', {
+      commits: [loadedCommit],
+      paths: [], links: [], dots: [], commitLeftMargin: [], graph: [], hasMore: true, currentLimit: 1,
+    });
+
+    const input = await waitFor(() => container.querySelector<HTMLInputElement>('.search-input')!);
+    await fireEvent.input(input, { target: { value: 'target' } });
+    await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
+    const request = globalThis.__postedMessages
+      .map(entry => entry.data as { type?: string; payload?: { requestId?: number } })
+      .find(entry => entry.type === 'historySearchStart')!;
+
+    postMsg('repoList', {
+      repos: [
+        { path: '/r/a', name: 'a', type: 'root' },
+        { path: '/r/b', name: 'b', type: 'root' },
+      ],
+      active: '/r/b',
+    });
+
+    await waitFor(() => {
+      expect(container.querySelector<HTMLInputElement>('.search-input')?.value).toBe('');
+      expect(container.querySelector('.search-results')).toBeNull();
+    });
+
+    postMsg('historySearchPage', {
+      requestId: request.payload!.requestId,
+      commits: [commitRow('bbbbbbb2', 'stale target')],
+      complete: true,
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(container.querySelector('.search-results')).toBeNull();
+  });
+
+  it('keeps the active query visible when the search bar is remounted', async () => {
+    const { container } = render(App);
+    const input = await waitFor(() => container.querySelector<HTMLInputElement>('.search-input')!);
+    await fireEvent.input(input, { target: { value: 'persistent query' } });
+    await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
+
+    uiStore.viewMode = 'log';
+    await waitFor(() => expect(
+      container.querySelector<HTMLInputElement>('.search-input')?.placeholder
+    ).toContain('reflog'));
+    uiStore.viewMode = 'graph';
+
+    await waitFor(() => {
+      expect(container.querySelector<HTMLInputElement>('.search-input')?.value).toBe('persistent query');
+      expect(container.querySelector('.close-btn')).not.toBeNull();
+      expect(container.querySelector('.search-results')).not.toBeNull();
+    });
+  });
+
+  it('keeps load-more retryable after a later search page fails', async () => {
+    const { container } = render(App);
+    const input = await waitFor(() => container.querySelector<HTMLInputElement>('.search-input')!);
+    await fireEvent.input(input, { target: { value: 'target' } });
+    await fireEvent.keyDown(container.querySelector('.search-bar')!, { key: 'Enter' });
+    const request = globalThis.__postedMessages
+      .map(entry => entry.data as { type?: string; payload?: { requestId?: number } })
+      .find(entry => entry.type === 'historySearchStart')!;
+    postMsg('historySearchPage', {
+      requestId: request.payload!.requestId,
+      commits: [commitRow('bbbbbbb2', 'target one')],
+      complete: false,
+    });
+    const loadMore = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('.load-more');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    await fireEvent.click(loadMore);
+    postMsg('historySearchError', {
+      requestId: request.payload!.requestId,
+      message: 'temporary failure',
+    });
+
+    const retry = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>('.load-more');
+      expect(button).not.toBeNull();
+      return button!;
+    });
+    globalThis.__postedMessages = [];
+    await fireEvent.click(retry);
+    expect(globalThis.__postedMessages.some(entry =>
+      (entry.data as { type?: string }).type === 'historySearchStart'
+    )).toBe(true);
+  });
+
+  it('restarts an active search when the extension invalidates its ordering', async () => {
+    const { container } = render(App);
+    const input = await waitFor(() => container.querySelector<HTMLInputElement>('.search-input')!);
+    await fireEvent.input(input, { target: { value: 'ordered target' } });
+    const first = await waitFor(() => {
+      const start = globalThis.__postedMessages
+        .map(entry => entry.data as { type?: string; payload?: { requestId?: number } })
+        .find(entry => entry.type === 'historySearchStart');
+      expect(start).toBeDefined();
+      return start!;
+    });
+
+    postMsg('historySearchRestart');
+
+    await waitFor(() => {
+      const starts = globalThis.__postedMessages
+        .map(entry => entry.data as { type?: string; payload?: { requestId?: number; query?: string } })
+        .filter(entry => entry.type === 'historySearchStart');
+      expect(starts).toHaveLength(2);
+      expect(starts[1].payload?.requestId).toBeGreaterThan(first.payload!.requestId!);
+      expect(starts[1].payload?.query).toBe('ordered target');
+      expect(container.querySelector<HTMLInputElement>('.search-input')?.value).toBe('ordered target');
+    });
   });
 });

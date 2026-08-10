@@ -10,6 +10,7 @@
   import BottomPanel from './components/layout/BottomPanel.svelte';
   import Toolbar from './components/layout/Toolbar.svelte';
   import SearchBar from './components/common/SearchBar.svelte';
+  import SearchResults from './components/common/SearchResults.svelte';
   import Reflog from './components/common/Reflog.svelte';
   import StatsView from './components/common/StatsView.svelte';
   import DeleteBranchModal from './components/modals/DeleteBranchModal.svelte';
@@ -45,7 +46,7 @@ import AmendModal from './components/modals/AmendModal.svelte';
   import FlowStartModal from './components/modals/FlowStartModal.svelte';
   import FlowFinishModal from './components/modals/FlowFinishModal.svelte';
   import BisectBanner from './components/common/BisectBanner.svelte';
-  import type { FlowConfig } from './lib/types';
+  import type { Commit, FlowConfig } from './lib/types';
   import { tooltip } from './lib/actions/tooltip';
   import DirtyActionModal from './components/modals/DirtyActionModal.svelte';
   import { dragRebaseMessage, dragMergeMessage } from './lib/utils/dragDrop';
@@ -54,8 +55,28 @@ import AmendModal from './components/modals/AmendModal.svelte';
 
   let flowConfig = $state<FlowConfig | null>(null);
   let bisectMessage = $state<string | null>(null);
-  let searchMatchedHashes = $state<Set<string> | null>(null);
-  let searchNavigateHash = $state<string | null>(null);
+  interface HistorySearchState {
+    requestId: number;
+    query: string;
+    commits: Commit[];
+    currentIndex: number;
+    loading: boolean;
+    complete: boolean;
+    advanceAfterLoad: boolean;
+    failed: boolean;
+  }
+
+  let searchInput = $state('');
+  let historySearch = $state<HistorySearchState>({
+    requestId: 0,
+    query: '',
+    commits: [],
+    currentIndex: -1,
+    loading: false,
+    complete: true,
+    advanceAfterLoad: false,
+    failed: false,
+  });
   let headOffscreen = $state(false);
   let headJumpNonce = $state(0);
   let remoteFilter = $state<string[]>([]);
@@ -102,6 +123,35 @@ import AmendModal from './components/modals/AmendModal.svelte';
           branchStore.setData(msg.payload.branchData);
           commitStore.setData(msg.payload.logData);
           break;
+        case 'historySearchPage': {
+          if (msg.payload.requestId !== historySearch.requestId) break;
+          const existing = new Set(historySearch.commits.map(commit => commit.hash));
+          const appended = (msg.payload.commits as Commit[]).filter(commit => !existing.has(commit.hash));
+          const commits = [...historySearch.commits, ...appended];
+          const currentIndex = historySearch.currentIndex < 0 && commits.length > 0
+            ? 0
+            : historySearch.advanceAfterLoad && appended.length > 0
+              ? Math.min(historySearch.currentIndex + 1, commits.length - 1)
+              : historySearch.currentIndex;
+          historySearch = {
+            ...historySearch,
+            commits,
+            currentIndex,
+            loading: false,
+            complete: msg.payload.complete,
+            advanceAfterLoad: false,
+            failed: false,
+          };
+          break;
+        }
+        case 'historySearchError':
+          if (msg.payload.requestId !== historySearch.requestId) break;
+          historySearch = { ...historySearch, loading: false, complete: false, failed: true };
+          uiStore.setError(msg.payload.message);
+          break;
+        case 'historySearchRestart':
+          if (historySearch.query) startHistorySearch(historySearch.query);
+          break;
         case 'setLocale':
           i18n.setLocale(msg.payload.locale);
           if (msg.payload.homeDir) uiStore.homeDir = msg.payload.homeDir;
@@ -136,6 +186,9 @@ import AmendModal from './components/modals/AmendModal.svelte';
           avatarStore.reset();
           break;
         case 'repoList':
+          if (uiStore.activeRepo && uiStore.activeRepo !== msg.payload.active) {
+            resetHistorySearchForRepoChange();
+          }
           uiStore.repos = msg.payload.repos;
           uiStore.activeRepo = msg.payload.active;
           commitStore.notGitRepo = false;
@@ -296,13 +349,93 @@ import AmendModal from './components/modals/AmendModal.svelte';
     }
   }
 
-  function handleSearchResults(hashes: Set<string> | null) {
-    searchMatchedHashes = hashes;
-    searchNavigateHash = null;
+  function startHistorySearch(query: string) {
+    clearSelectedSearchCommit();
+    const requestId = historySearch.requestId + 1;
+    historySearch = {
+      requestId,
+      query,
+      commits: [],
+      currentIndex: -1,
+      loading: true,
+      complete: false,
+      advanceAfterLoad: false,
+      failed: false,
+    };
+    vscode.postMessage({ type: 'historySearchStart', payload: { requestId, query } });
   }
 
-  function handleSearchNavigate(hash: string) {
-    searchNavigateHash = hash;
+  function clearHistorySearch() {
+    clearSelectedSearchCommit();
+    searchInput = '';
+    const previousRequestId = historySearch.requestId;
+    if (historySearch.query) {
+      vscode.postMessage({ type: 'historySearchCancel', payload: { requestId: previousRequestId } });
+    }
+    historySearch = {
+      requestId: previousRequestId + 1,
+      query: '',
+      commits: [],
+      currentIndex: -1,
+      loading: false,
+      complete: true,
+      advanceAfterLoad: false,
+      failed: false,
+    };
+  }
+
+  function resetHistorySearchForRepoChange() {
+    clearSelectedSearchCommit();
+    searchInput = '';
+    historySearch = {
+      requestId: historySearch.requestId + 1,
+      query: '',
+      commits: [],
+      currentIndex: -1,
+      loading: false,
+      complete: true,
+      advanceAfterLoad: false,
+      failed: false,
+    };
+  }
+
+  function clearSelectedSearchCommit() {
+    if (historySearch.commits.some(commit => commit.hash === uiStore.selectedCommitHash)) {
+      uiStore.selectCommit(null);
+      uiStore.showBottomPanel = false;
+    }
+  }
+
+  function loadMoreHistorySearch(advanceAfterLoad = false) {
+    if (historySearch.loading || historySearch.complete || !historySearch.query) return;
+    if (historySearch.failed) {
+      startHistorySearch(historySearch.query);
+      return;
+    }
+    historySearch = { ...historySearch, loading: true, advanceAfterLoad, failed: false };
+    vscode.postMessage({ type: 'historySearchMore', payload: { requestId: historySearch.requestId } });
+  }
+
+  function selectHistorySearchIndex(index: number) {
+    if (index < 0 || index >= historySearch.commits.length) return;
+    historySearch = { ...historySearch, currentIndex: index };
+  }
+
+  function selectHistorySearchCommit(commit: Commit) {
+    selectHistorySearchIndex(historySearch.commits.findIndex(item => item.hash === commit.hash));
+    uiStore.selectCommit(commit.hash);
+  }
+
+  function navigateHistorySearch(delta: -1 | 1) {
+    const count = historySearch.commits.length;
+    if (count === 0) return;
+    const next = historySearch.currentIndex + delta;
+    if (next >= count && !historySearch.complete) {
+      loadMoreHistorySearch(true);
+      return;
+    }
+    const currentIndex = (next + count) % count;
+    historySearch = { ...historySearch, currentIndex };
   }
 
   function handleJumpToHead() {
@@ -310,6 +443,7 @@ import AmendModal from './components/modals/AmendModal.svelte';
   }
 
   function handleFilterChange(filter: string[]) {
+    const activeQuery = historySearch.query;
     remoteFilter = filter;
     if (filter.length > 0) {
       branchFilter = branchFilter.filter(name => {
@@ -327,9 +461,11 @@ import AmendModal from './components/modals/AmendModal.svelte';
         remoteFilter: filter.length > 0 ? [...filter] : undefined,
       },
     });
+    if (activeQuery) startHistorySearch(activeQuery);
   }
 
   function handleBranchFilterChange(branches: string[]) {
+    const activeQuery = historySearch.query;
     branchFilter = branches;
     commitStore.setLoading(true);
     vscode.postMessage({
@@ -340,6 +476,7 @@ import AmendModal from './components/modals/AmendModal.svelte';
         remoteFilter: remoteFilter.length > 0 ? [...remoteFilter] : undefined,
       },
     });
+    if (activeQuery) startHistorySearch(activeQuery);
   }
 
   // Draggable resize handle - track active listeners for cleanup
@@ -470,8 +607,16 @@ import AmendModal from './components/modals/AmendModal.svelte';
     {#if uiStore.viewMode === 'graph'}
       {#if !bisectMessage && !conflict && !rebasePaused}
         <SearchBar
-          onResults={handleSearchResults}
-          onNavigate={handleSearchNavigate}
+          bind:query={searchInput}
+          onSearch={startHistorySearch}
+          onClear={clearHistorySearch}
+          onPrevious={() => navigateHistorySearch(-1)}
+          onNext={() => navigateHistorySearch(1)}
+          resultCount={historySearch.commits.length}
+          currentIndex={historySearch.currentIndex}
+          searchComplete={historySearch.complete}
+          searchLoading={historySearch.loading}
+          hasHead={commitStore.headHash !== null}
           remotes={branchStore.remotes.map(r => r.name)}
           {remoteFilter}
           onFilterChange={handleFilterChange}
@@ -492,7 +637,18 @@ import AmendModal from './components/modals/AmendModal.svelte';
       {/if}
       {#if !uiStore.commitDetailFullscreen}
         <div class="graph-area">
-          <CommitGraph {searchMatchedHashes} {searchNavigateHash} headJumpNonce={headJumpNonce} onHeadOffscreenChange={(v) => headOffscreen = v} bisectActive={bisectMessage !== null} bisectCulpritHash={bisectMessage?.includes('is the first bad commit') ? bisectMessage.match(/^([a-f0-9]{7,40})/)?.[1] ?? null : null} {remoteFilter} />
+          {#if historySearch.query}
+            <SearchResults
+              commits={historySearch.commits}
+              selectedHash={historySearch.currentIndex >= 0 ? historySearch.commits[historySearch.currentIndex]?.hash : null}
+              loading={historySearch.loading}
+              complete={historySearch.complete}
+              onSelect={selectHistorySearchCommit}
+              onLoadMore={() => loadMoreHistorySearch()}
+            />
+          {:else}
+            <CommitGraph searchMatchedHashes={null} searchNavigateHash={null} headJumpNonce={headJumpNonce} onHeadOffscreenChange={(v) => headOffscreen = v} bisectActive={bisectMessage !== null} bisectCulpritHash={bisectMessage?.includes('is the first bad commit') ? bisectMessage.match(/^([a-f0-9]{7,40})/)?.[1] ?? null : null} {remoteFilter} />
+          {/if}
         </div>
       {/if}
       {#if uiStore.showBottomPanel && (uiStore.selectedCommitHash || uiStore.comparing)}
@@ -507,7 +663,7 @@ import AmendModal from './components/modals/AmendModal.svelte';
           </div>
         {/if}
         <div class="bottom-area" class:fullscreen={uiStore.commitDetailFullscreen} style={uiStore.commitDetailFullscreen ? '' : `height: ${uiStore.bottomPanelHeight}px;`}>
-          <BottomPanel />
+        <BottomPanel commitOverride={historySearch.commits.find(commit => commit.hash === uiStore.selectedCommitHash)} />
         </div>
       {/if}
     {:else if uiStore.viewMode === 'log'}

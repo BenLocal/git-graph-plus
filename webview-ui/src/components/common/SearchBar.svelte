@@ -1,13 +1,20 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { commitStore } from '../../lib/stores/commits.svelte';
   import { t } from '../../lib/i18n/index.svelte';
   import { tooltip } from '../../lib/actions/tooltip';
   import type { BranchInfo } from '../../lib/types';
 
   interface Props {
-    onResults: (matchedHashes: Set<string> | null) => void;
-    onNavigate: (hash: string) => void;
+    query?: string;
+    onSearch: (query: string) => void;
+    onClear: () => void;
+    onPrevious: () => void;
+    onNext: () => void;
+    resultCount?: number;
+    currentIndex?: number;
+    searchComplete?: boolean;
+    searchLoading?: boolean;
+    hasHead?: boolean;
     remotes?: string[];
     remoteFilter?: string[];
     onFilterChange?: (filter: string[]) => void;
@@ -19,8 +26,16 @@
   }
 
   let {
-    onResults,
-    onNavigate,
+    query = $bindable(''),
+    onSearch,
+    onClear,
+    onPrevious,
+    onNext,
+    resultCount = 0,
+    currentIndex = -1,
+    searchComplete = true,
+    searchLoading = false,
+    hasHead = false,
     remotes = [],
     remoteFilter = [],
     onFilterChange = () => {},
@@ -31,9 +46,6 @@
     onJumpToHead = () => {},
   }: Props = $props();
 
-  let query = $state('');
-  let matchedHashes = $state<string[]>([]);
-  let currentIndex = $state(-1);
   let inputEl: HTMLInputElement | undefined = $state();
   let filterOpen = $state(false);
   let branchFilterOpen = $state(false);
@@ -42,8 +54,6 @@
   const filterActive = $derived(remoteFilter.length > 0);
 
   const branchFilterActive = $derived(branchFilter.length > 0);
-
-  const hasHead = $derived(commitStore.headHash !== null);
 
   const localBranches = $derived(
     (remoteFilter.length === 0 || remoteFilter.includes('local'))
@@ -86,70 +96,34 @@
     onBranchFilterChange([]);
   }
 
-  // Precompute one lowercased haystack per commit so typing only scans the
-  // cached strings instead of rebuilding (join + toLowerCase over subject,
-  // body, refs, …) for every commit on every keystroke. Rebuilds only when
-  // the commit list changes.
-  const haystacks = $derived.by(() => {
-    const list: Array<{ hash: string; text: string }> = [];
-    for (const commit of commitStore.commits) {
-      const text = [
-        commit.subject,
-        commit.body,
-        commit.author.name,
-        commit.author.email,
-        commit.hash,
-        commit.abbreviatedHash,
-        ...commit.refs
-          .filter(r => r.type === 'branch' || r.type === 'remote-branch' || r.type === 'tag')
-          .flatMap(r => r.type === 'remote-branch' && r.remote ? [r.name, `${r.remote}/${r.name}`] : [r.name]),
-        ...(commit.refs.some(r => r.type === 'head') ? ['HEAD'] : []),
-      ].join(' ').toLowerCase();
-      list.push({ hash: commit.hash, text });
-    }
-    return list;
-  });
-
   function doSearch() {
-    const q = query.trim().toLowerCase();
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    const q = query.trim();
     if (!q) {
       clear();
       return;
     }
-
-    const matched: string[] = [];
-    for (const { hash, text } of haystacks) {
-      if (text.includes(q)) {
-        matched.push(hash);
-      }
-    }
-
-    matchedHashes = matched;
-    currentIndex = matched.length > 0 ? 0 : -1;
-    onResults(matched.length > 0 ? new Set(matched) : new Set());
-
-    if (matched.length > 0) {
-      onNavigate(matched[0]);
-    }
+    onSearch(q);
   }
 
   function navigatePrev() {
-    if (matchedHashes.length === 0) return;
-    currentIndex = (currentIndex - 1 + matchedHashes.length) % matchedHashes.length;
-    onNavigate(matchedHashes[currentIndex]);
+    if (resultCount === 0) return;
+    onPrevious();
   }
 
   function navigateNext() {
-    if (matchedHashes.length === 0) return;
-    currentIndex = (currentIndex + 1) % matchedHashes.length;
-    onNavigate(matchedHashes[currentIndex]);
+    if (resultCount === 0) return;
+    onNext();
   }
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
       if (e.shiftKey) {
         navigatePrev();
-      } else if (matchedHashes.length > 0 && query.trim()) {
+      } else if (resultCount > 0 && query.trim()) {
         navigateNext();
       } else {
         doSearch();
@@ -168,10 +142,12 @@
   }
 
   function clear() {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
     query = '';
-    matchedHashes = [];
-    currentIndex = -1;
-    onResults(null);
+    onClear();
   }
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -210,29 +186,32 @@
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="search-bar" role="group" onkeydown={handleKeydown}>
-  <div class="search-row" class:has-results={query && matchedHashes.length > 0} class:no-results={query && matchedHashes.length === 0}>
+  <div class="search-row" class:has-results={query && resultCount > 0} class:no-results={query && searchComplete && !searchLoading && resultCount === 0}>
     <i class="codicon codicon-search search-icon"></i>
     <input
       class="search-input"
       type="text"
+      maxlength="1000"
       bind:this={inputEl}
       bind:value={query}
       oninput={onInput}
       placeholder={t('search.placeholder')}
     />
     {#if query}
-      <span class="search-count" class:empty={matchedHashes.length === 0}>
-        {#if matchedHashes.length > 0}
-          <span class="count-current">{currentIndex + 1}</span><span class="count-sep">/</span><span class="count-total">{matchedHashes.length}</span>
+      <span class="search-count" class:empty={resultCount === 0}>
+        {#if resultCount > 0}
+          <span class="count-current">{currentIndex + 1}</span><span class="count-sep">/</span><span class="count-total">{resultCount}{searchComplete ? '' : '+'}</span>
+        {:else if searchLoading || !searchComplete}
+          <i class="codicon codicon-loading codicon-modifier-spin"></i>
         {:else}
           {t('search.noResults')}
         {/if}
       </span>
       <span class="nav-divider"></span>
-      <button class="nav-btn" onclick={navigatePrev} disabled={matchedHashes.length === 0} aria-label={t('search.prev')} use:tooltip={t('search.prev')}>
+      <button class="nav-btn" onclick={navigatePrev} disabled={resultCount === 0} aria-label={t('search.prev')} use:tooltip={t('search.prev')}>
         <i class="codicon codicon-chevron-up"></i>
       </button>
-      <button class="nav-btn" onclick={navigateNext} disabled={matchedHashes.length === 0} aria-label={t('search.next')} use:tooltip={t('search.next')}>
+      <button class="nav-btn" onclick={navigateNext} disabled={resultCount === 0} aria-label={t('search.next')} use:tooltip={t('search.next')}>
         <i class="codicon codicon-chevron-down"></i>
       </button>
       <button class="nav-btn close-btn" onclick={clear} aria-label={t('search.clear')} use:tooltip={t('search.clear')}>
