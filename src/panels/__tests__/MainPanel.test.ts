@@ -41,7 +41,6 @@ const H = vi.hoisted(() => {
     avatarSource: undefined as string | undefined,
     configurationHandler: null as null | ((event: { affectsConfiguration(section: string): boolean }) => void),
     messageHandler: null as null | ((m: unknown) => unknown),
-    configHandler: null as null | ((e: { affectsConfiguration: (key: string) => boolean }) => void),
     repoChangeHandler: null as null | ((what: string) => unknown),
     panel: null as null | { webview: { postMessage: ReturnType<typeof vi.fn> } },
     repos: [] as Array<{ path: string; name: string; type: string }>,
@@ -86,7 +85,10 @@ vi.mock('vscode', () => {
       }),
       getWorkspaceFolder: () => ({ uri: { fsPath: '/repo' } }),
       workspaceFolders: [{ uri: { fsPath: '/repo' } }],
-      onDidChangeConfiguration: () => ({ dispose() { } }),
+      onDidChangeConfiguration: (callback: (event: { affectsConfiguration(section: string): boolean }) => void) => {
+        H.configurationHandler = callback;
+        return { dispose() { } };
+      },
       fs: { writeFile: vi.fn(async () => { }) },
     },
     commands: { executeCommand: vi.fn() },
@@ -325,7 +327,7 @@ describe('MainPanel message routing', () => {
     });
     await vi.waitFor(() => expect(reader.next).toHaveBeenCalled());
 
-    H.configHandler!({
+    H.configurationHandler!({
       affectsConfiguration: key => key === 'gitGraphPlus.graphSortOrder',
     });
     await activeSearch;
